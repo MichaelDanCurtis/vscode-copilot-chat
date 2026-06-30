@@ -61,6 +61,28 @@ function cellIdOf(payload: unknown): string | undefined {
  *
  * @param executor Command executor (`vscode.commands.executeCommand`).
  */
+/**
+ * Cap on the per-surface accumulated selection Set. The cellIds come from a
+ * model-authored document, so the set is bounded to prevent unbounded growth of
+ * both the in-memory map and the prefilled chat-input summary. Additions beyond
+ * the cap are ignored (the existing selections are kept).
+ */
+const MAX_SELECTIONS_PER_SURFACE = 200;
+
+/**
+ * Neutralize a composed chat-input query so it can never be interpreted as a
+ * slash-command or agent-mention. The query is built from model-authored
+ * surfaceId/payload, so a leading `/` or `@` (after trimming) is prefixed with a
+ * space to keep it plain text the user must read before sending.
+ */
+function neutralizeChatQuery(query: string): string {
+	const trimmedStart = query.replace(/^\s+/, '');
+	if (trimmedStart.startsWith('/') || trimmedStart.startsWith('@')) {
+		return ` ${query}`;
+	}
+	return query;
+}
+
 export function createAgentRelay(executor: CommandExecutor): AgentRelay {
 	// Accumulated grid cell selections per surfaceId. Insertion-ordered, de-duped.
 	const selections = new Map<string, Set<string>>();
@@ -75,13 +97,17 @@ export function createAgentRelay(executor: CommandExecutor): AgentRelay {
 					set = new Set<string>();
 					selections.set(surfaceId, set);
 				}
-				set.add(cellId);
+				// Bound the set: ignore further additions once at the cap (unless the
+				// cellId is already present, which is a no-op de-dupe).
+				if (set.has(cellId) || set.size < MAX_SELECTIONS_PER_SURFACE) {
+					set.add(cellId);
+				}
 				summary = `Selected seats on ${surfaceId}: ${[...set].join(', ')}`;
 			} else {
 				const action = interaction.action ?? interaction.componentId;
 				summary = `${action} on ${surfaceId}: ${JSON.stringify(interaction.payload)}`;
 			}
-			executor(CHAT_OPEN_COMMAND, { query: summary, isPartialQuery: true });
+			executor(CHAT_OPEN_COMMAND, { query: neutralizeChatQuery(summary), isPartialQuery: true });
 		},
 	};
 }

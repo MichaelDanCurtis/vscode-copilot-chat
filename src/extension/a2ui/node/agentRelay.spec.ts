@@ -83,4 +83,40 @@ describe('agentRelay', () => {
 		expect(query).toContain('toggle-x on surf-9');
 		expect(query).toContain('"on":true');
 	});
+
+	it('bounds the per-surface accumulation set (cap at 200)', () => {
+		const executor = vi.fn().mockResolvedValue(undefined);
+		const relay = createAgentRelay(executor);
+
+		// Push 300 distinct cellIds; the cumulative list must not exceed the cap.
+		for (let i = 0; i < 300; i++) {
+			relay.enqueueAgentTurn('surf-cap', { componentId: `c${i}`, payload: { cellId: `c${i}` } });
+		}
+		const query = (executor.mock.calls[executor.mock.calls.length - 1][1] as { query: string }).query;
+		const list = query.slice(query.indexOf(':') + 1).split(',').map(s => s.trim()).filter(Boolean);
+		expect(list.length).toBeLessThanOrEqual(200);
+	});
+
+	it('neutralizes a leading slash so the query is not a slash-command', () => {
+		const executor = vi.fn().mockResolvedValue(undefined);
+		const relay = createAgentRelay(executor);
+
+		// A surfaceId beginning with `/` would otherwise compose a query starting
+		// with `/...`. The generic branch is used (non-cellId payload).
+		relay.enqueueAgentTurn('/clear', { componentId: 'btn', action: '/fix', payload: { x: 1 } });
+
+		const query = (executor.mock.calls[0][1] as { query: string }).query;
+		expect(query.startsWith('/')).toBe(false);
+		expect(query.startsWith('@')).toBe(false);
+	});
+
+	it('neutralizes a leading @ mention', () => {
+		const executor = vi.fn().mockResolvedValue(undefined);
+		const relay = createAgentRelay(executor);
+
+		relay.enqueueAgentTurn('s', { componentId: 'btn', action: '@workspace', payload: { x: 1 } });
+
+		const query = (executor.mock.calls[0][1] as { query: string }).query;
+		expect(query.startsWith('@')).toBe(false);
+	});
 });
