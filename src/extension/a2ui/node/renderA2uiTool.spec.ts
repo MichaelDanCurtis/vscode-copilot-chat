@@ -16,9 +16,13 @@ function makeSurfaces() {
 		register: vi.fn().mockReturnValue({ runtimeUri }),
 		stashPendingEmit: vi.fn(),
 		maybeStartLiveFeed: vi.fn(),
+		openPanel: vi.fn(),
 		runtimeUri,
 	} as any;
 }
+
+const panelDoc = { ...good, surfaceId: 'p1', target: 'panel' };
+const bothDoc = { ...good, surfaceId: 'b1', target: 'both' };
 
 const liveDoc = {
 	version: 1,
@@ -65,6 +69,61 @@ describe('RenderA2uiTool', () => {
 		const tool = new RenderA2uiTool(surfaces);
 		await tool.invokeWith({ doc: good } as any, stream);
 		expect(surfaces.maybeStartLiveFeed).toHaveBeenCalledWith('s1', undefined);
+	});
+
+	describe('target routing (invokeWith — stream path)', () => {
+		it('absent target behaves as inset (emit, no openPanel)', async () => {
+			const stream = { generativeUI: vi.fn() } as any;
+			const surfaces = makeSurfaces();
+			const tool = new RenderA2uiTool(surfaces);
+			await tool.invokeWith({ doc: good } as any, stream);
+			expect(stream.generativeUI).toHaveBeenCalledWith('s1', expect.anything(), good, 1);
+			expect(surfaces.openPanel).not.toHaveBeenCalled();
+		});
+
+		it('target panel does NOT emit the inset but DOES open the panel', async () => {
+			const stream = { generativeUI: vi.fn() } as any;
+			const surfaces = makeSurfaces();
+			const tool = new RenderA2uiTool(surfaces);
+			await tool.invokeWith({ doc: panelDoc } as any, stream);
+			expect(stream.generativeUI).not.toHaveBeenCalled();
+			expect(surfaces.openPanel).toHaveBeenCalledWith('p1', panelDoc, surfaces.runtimeUri);
+		});
+
+		it('target both emits the inset AND opens the panel', async () => {
+			const stream = { generativeUI: vi.fn() } as any;
+			const surfaces = makeSurfaces();
+			const tool = new RenderA2uiTool(surfaces);
+			await tool.invokeWith({ doc: bothDoc } as any, stream);
+			expect(stream.generativeUI).toHaveBeenCalledWith('b1', expect.anything(), bothDoc, 1);
+			expect(surfaces.openPanel).toHaveBeenCalledWith('b1', bothDoc, surfaces.runtimeUri);
+		});
+	});
+
+	describe('target routing (invoke — stream-less path)', () => {
+		it('absent target behaves as inset (stash, no openPanel)', async () => {
+			const surfaces = makeSurfaces();
+			const tool = new RenderA2uiTool(surfaces);
+			await tool.invoke({ input: { doc: good } } as any, {} as any);
+			expect(surfaces.stashPendingEmit).toHaveBeenCalledOnce();
+			expect(surfaces.openPanel).not.toHaveBeenCalled();
+		});
+
+		it('target panel does NOT stash but DOES open the panel', async () => {
+			const surfaces = makeSurfaces();
+			const tool = new RenderA2uiTool(surfaces);
+			await tool.invoke({ input: { doc: panelDoc } } as any, {} as any);
+			expect(surfaces.stashPendingEmit).not.toHaveBeenCalled();
+			expect(surfaces.openPanel).toHaveBeenCalledWith('p1', panelDoc, surfaces.runtimeUri);
+		});
+
+		it('target both stashes AND opens the panel', async () => {
+			const surfaces = makeSurfaces();
+			const tool = new RenderA2uiTool(surfaces);
+			await tool.invoke({ input: { doc: bothDoc } } as any, {} as any);
+			expect(surfaces.stashPendingEmit).toHaveBeenCalledOnce();
+			expect(surfaces.openPanel).toHaveBeenCalledWith('b1', bothDoc, surfaces.runtimeUri);
+		});
 	});
 
 	describe('invoke() (stream-less path) — EMIT BRIDGE stash', () => {

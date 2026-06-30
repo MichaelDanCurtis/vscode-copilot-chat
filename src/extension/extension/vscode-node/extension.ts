@@ -12,6 +12,7 @@ import { createInsetTransport, ROUTE_INTERACTION_COMMAND } from '../../a2ui/node
 import { McpDataPipe } from '../../a2ui/node/mcpDataPipe';
 import { SurfaceManager } from '../../a2ui/node/surfaceManager';
 import { createLiveSource } from '../../a2ui/node/dataSources';
+import { createA2uiPanelRegistry } from '../../a2ui/vscode-node/a2uiPanelRegistry';
 import { baseActivate } from '../vscode/extension';
 import { vscodeNodeContributions } from './contributions';
 import { registerServices } from './services';
@@ -98,6 +99,19 @@ function registerA2ui(context: ExtensionContext): void {
 	const agUiBridge = new AgUiBridge({ post: (surfaceId, msg) => channelHolder.manager?.post(surfaceId, msg) });
 	const mcpDataPipe = new McpDataPipe(agUiBridge);
 
+	// PANEL SURFACES: a per-surfaceId registry of standalone webview panel hosts.
+	// `openPanel` constructs/reuses an A2uiPanelHost (which registers itself as a
+	// SurfaceView via addView, keeping the panel in sync with the chat) and routes
+	// the panel's interactions back through routeInteraction — the same entry point
+	// core uses for inset interactions. Both collaborators are late-bound to the
+	// manager via channelHolder so panel clicks share the optimistic-echo path.
+	const panelRegistry = createA2uiPanelRegistry({
+		addView: (surfaceId, view) => channelHolder.manager!.addView(surfaceId, view),
+		routeInteraction: (surfaceId, componentId, binding, payload, action) =>
+			channelHolder.manager!.routeInteraction(surfaceId, componentId, binding, payload, action),
+	});
+	context.subscriptions.push(panelRegistry);
+
 	const surfaceManager = new SurfaceManager({
 		resolveRuntimeUri: () => vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@copilot', 'a2ui-runtime', 'dist', 'runtime.iife.js'),
 		// LIVE host→inset push: forward through the internal core command which
@@ -123,6 +137,9 @@ function registerA2ui(context: ExtensionContext): void {
 			);
 			return mcpDataPipe.subscribe(surfaceId, source, live.name ?? live.stateKey);
 		},
+		// PANEL TARGET: open/reuse a standalone webview panel for `target:'panel'`
+		// or `'both'` documents. Delegates to the panel registry above.
+		openPanel: (surfaceId, doc, runtimeUri) => panelRegistry.openPanel(surfaceId, doc, runtimeUri),
 	});
 	channelHolder.manager = surfaceManager;
 

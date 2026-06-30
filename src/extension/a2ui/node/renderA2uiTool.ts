@@ -28,6 +28,12 @@ export interface SurfaceRegistrar {
 	 * Optional so non-live registrars/tests need not implement it.
 	 */
 	maybeStartLiveFeed?(surfaceId: string, live: import('@copilot/a2ui-runtime').A2uiLiveBinding | undefined): void;
+	/**
+	 * Open (or reveal + re-render) a standalone webview PANEL for the surface.
+	 * Called by the render path for documents whose `target` is `'panel'` or
+	 * `'both'`. Optional so inset-only registrars/tests need not implement it.
+	 */
+	openPanel?(surfaceId: string, doc: object, runtimeUri: import('vscode').Uri): void;
 }
 
 /** Minimal stream shape this tool needs to emit a generative-UI inset part. */
@@ -82,12 +88,22 @@ export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput
 		if (!v.ok) { return { ok: false, message: `A2UI invalid: ${v.errors.join('; ')}` }; }
 		const surfaces = this._resolveSurfaces();
 		const { runtimeUri } = surfaces.register(input.doc.surfaceId);
-		stream.generativeUI(input.doc.surfaceId, runtimeUri, input.doc, input.doc.version);
+		// TARGET ROUTING: default 'inset'. 'inset'/'both' emit the in-bubble inset;
+		// 'panel'/'both' open a standalone webview panel. 'panel'-only must NOT emit
+		// the inset.
+		const target = input.doc.target ?? 'inset';
+		if (target === 'inset' || target === 'both') {
+			stream.generativeUI(input.doc.surfaceId, runtimeUri, input.doc, input.doc.version);
+		}
+		if (target === 'panel' || target === 'both') {
+			surfaces.openPanel?.(input.doc.surfaceId, input.doc, runtimeUri);
+		}
 		// LIVE FEED: if the doc declares a `live` binding, start a self-updating
-		// feed now. The source ticks continuously, so the chart populates within
-		// ~1 interval even if the inset is not yet READY.
+		// feed now (for ALL targets). The source ticks continuously, so a bound
+		// chart/table populates within ~1 interval even before READY, and the
+		// STATE_DELTAs fan out to the inset AND any panel view.
 		surfaces.maybeStartLiveFeed?.(input.doc.surfaceId, input.doc.live);
-		return { ok: true, message: `Rendered surface ${input.doc.surfaceId}` };
+		return { ok: true, message: `Rendered surface ${input.doc.surfaceId} (target: ${target})` };
 	}
 
 	/**
@@ -119,17 +135,27 @@ export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput
 		// so the stream-owning tool-calling handler drains and replays it later.
 		const surfaces = this._resolveSurfaces();
 		const { runtimeUri } = surfaces.register(input.doc.surfaceId);
-		surfaces.stashPendingEmit({
-			surfaceId: input.doc.surfaceId,
-			runtimeUri,
-			doc: input.doc,
-			version: input.doc.version,
-		});
-		// LIVE FEED: start the self-updating feed (if declared) at reserve time.
-		// The surface is registered, so STATE_DELTAs are buffered/posted through
-		// the same channel the inset will read once it is emitted + READY.
+		// TARGET ROUTING: default 'inset'. 'inset'/'both' STASH a pending inset emit
+		// (replayed later by the stream-owning handler). 'panel'/'both' open a
+		// standalone webview panel now. 'panel'-only must NOT stash an inset emit.
+		const target = input.doc.target ?? 'inset';
+		if (target === 'inset' || target === 'both') {
+			surfaces.stashPendingEmit({
+				surfaceId: input.doc.surfaceId,
+				runtimeUri,
+				doc: input.doc,
+				version: input.doc.version,
+			});
+		}
+		if (target === 'panel' || target === 'both') {
+			surfaces.openPanel?.(input.doc.surfaceId, input.doc, runtimeUri);
+		}
+		// LIVE FEED: start the self-updating feed (if declared) at reserve time for
+		// ALL targets. The surface is registered, so STATE_DELTAs are posted through
+		// the same channel the inset reads once emitted + READY, and fan out to any
+		// panel view immediately.
 		surfaces.maybeStartLiveFeed?.(input.doc.surfaceId, input.doc.live);
-		return new LanguageModelToolResult([new LanguageModelTextPart(`Rendered surface ${input.doc.surfaceId}`)]);
+		return new LanguageModelToolResult([new LanguageModelTextPart(`Rendered surface ${input.doc.surfaceId} (target: ${target})`)]);
 	}
 }
 

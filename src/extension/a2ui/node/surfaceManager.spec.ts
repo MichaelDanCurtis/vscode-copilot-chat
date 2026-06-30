@@ -175,6 +175,91 @@ describe('SurfaceManager', () => {
 		});
 	});
 
+	describe('addView (multi-view fan-out — panel surfaces)', () => {
+		const msg: HostToInsetMessage = { type: 'STATE_DELTA', surfaceId: 'surf-1', patch: [{ op: 'add', path: '/x', value: 1 }] };
+
+		it('fans post() out to every registered view AND the inset transport', () => {
+			const { manager, post } = makeManager();
+			manager.register('surf-1');
+			const v1 = { post: vi.fn() };
+			const v2 = { post: vi.fn() };
+			manager.addView('surf-1', v1);
+			manager.addView('surf-1', v2);
+
+			manager.post('surf-1', msg);
+
+			expect(v1.post).toHaveBeenCalledWith(msg);
+			expect(v2.post).toHaveBeenCalledWith(msg);
+			expect(post).toHaveBeenCalledWith('surf-1', msg); // inset transport too
+		});
+
+		it('after a view is removed only the remaining view receives the message', () => {
+			const { manager } = makeManager();
+			manager.register('surf-1');
+			const v1 = { post: vi.fn() };
+			const v2 = { post: vi.fn() };
+			const d1 = manager.addView('surf-1', v1);
+			manager.addView('surf-1', v2);
+
+			d1.dispose(); // remove v1
+			manager.post('surf-1', msg);
+
+			expect(v1.post).not.toHaveBeenCalled();
+			expect(v2.post).toHaveBeenCalledOnce();
+		});
+
+		it('the remove disposable is idempotent', () => {
+			const { manager } = makeManager();
+			manager.register('surf-1');
+			const v1 = { post: vi.fn() };
+			const d1 = manager.addView('surf-1', v1);
+			expect(() => { d1.dispose(); d1.dispose(); }).not.toThrow();
+		});
+
+		it('fans out to a panel view even when the surface has no inset record (panel-only)', () => {
+			const { manager, post } = makeManager();
+			// NOTE: no register() — panel-only surface with no inset.
+			const v1 = { post: vi.fn() };
+			manager.addView('surf-only', v1);
+			manager.post('surf-only', msg);
+			expect(v1.post).toHaveBeenCalledWith(msg);
+			expect(post).not.toHaveBeenCalled(); // no inset record → no inset forward
+		});
+
+		it('disposeSurface drops the surface views (no further fan-out)', () => {
+			const { manager } = makeManager();
+			manager.register('surf-1');
+			const v1 = { post: vi.fn() };
+			manager.addView('surf-1', v1);
+			manager.disposeSurface('surf-1');
+			manager.post('surf-1', msg);
+			expect(v1.post).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('openPanel', () => {
+		it('delegates to the injected openPanel dep', () => {
+			const { post, transport } = makeInsetTransport();
+			void post;
+			const { pipe } = makeMcpPipe();
+			const openPanel = vi.fn();
+			const manager = new SurfaceManager({
+				insetTransport: transport,
+				mcpPipe: pipe,
+				enqueueAgentTurn: vi.fn(),
+				resolveRuntimeUri: vi.fn().mockReturnValue(FAKE_URI),
+				openPanel,
+			});
+			manager.openPanel('surf-1', { surfaceId: 'surf-1' }, FAKE_URI as any);
+			expect(openPanel).toHaveBeenCalledWith('surf-1', { surfaceId: 'surf-1' }, FAKE_URI);
+		});
+
+		it('is a no-op when no openPanel dep is wired', () => {
+			const { manager } = makeManager();
+			expect(() => manager.openPanel('surf-1', {}, FAKE_URI as any)).not.toThrow();
+		});
+	});
+
 	describe('post', () => {
 		it('delegates to insetTransport.post with the same arguments', () => {
 			const { manager, post } = makeManager();

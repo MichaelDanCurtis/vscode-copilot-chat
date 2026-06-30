@@ -19,6 +19,20 @@ interface McpPipeLike {
 	callTool(client: unknown, name: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
+/**
+ * A registered consumer of a surface's host→inset message stream OTHER than the
+ * core inset (which is reached through {@link SurfaceManagerDeps.insetTransport}).
+ *
+ * The canonical implementor is `A2uiPanelHost`, which posts each message to its
+ * standalone webview panel. Registering one through {@link SurfaceManager.addView}
+ * keeps that panel in sync with the chat: every `post(surfaceId, …)` — including
+ * the live-feed STATE_DELTAs and the optimistic interaction echoes — fans out to
+ * the inset AND every view, so the panel and the in-bubble inset stay identical.
+ */
+export interface SurfaceView {
+	post(msg: HostToInsetMessage): void;
+}
+
 /** Collaborators injected into SurfaceManager. */
 export interface SurfaceManagerDeps {
 	/** Forwards HostToInsetMessage to the actual inset webview/panel. */
@@ -40,6 +54,16 @@ export interface SurfaceManagerDeps {
 	 * not provide it.
 	 */
 	startLiveFeed?(surfaceId: string, live: LiveBinding): Disposable | undefined;
+	/**
+	 * Open (or reveal + re-render an existing) standalone webview PANEL surface
+	 * for the given document. Injected at activation — it constructs/reuses an
+	 * `A2uiPanelHost` (which registers itself as a {@link SurfaceView} via
+	 * {@link SurfaceManager.addView} so it stays in bidirectional sync with the
+	 * chat). Optional, mirroring {@link startLiveFeed}, so non-panel tests and
+	 * wirings need not provide it. Called by the render path for documents whose
+	 * `target` is `'panel'` or `'both'`.
+	 */
+	openPanel?(surfaceId: string, doc: object, runtimeUri: Uri): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,8 +127,52 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	private readonly _surfaces = new Map<string, SurfaceRecord>();
 	/** Pending-emit records keyed by surfaceId. O(1) targeted drain. */
 	private readonly _pendingEmits = new Map<string, PendingEmit>();
+	/**
+	 * Additional message consumers per surfaceId (panel hosts). The core inset is
+	 * NOT in this map — it is reached through `_deps.insetTransport`. `post()` fans
+	 * out to both the inset transport and every view here, keeping panel(s) and the
+	 * in-bubble inset in lock-step.
+	 */
+	private readonly _views = new Map<string, Set<SurfaceView>>();
 
 	constructor(private readonly _deps: SurfaceManagerDeps) { }
+
+	// -------------------------------------------------------------------------
+	// Multi-view fan-out (panel surfaces)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Register an additional {@link SurfaceView} (e.g. a panel host) for a surface
+	 * so it receives every subsequent {@link post} alongside the core inset. Returns
+	 * a Disposable that removes the view; disposing it more than once is safe, and a
+	 * view is also dropped automatically by {@link disposeSurface}.
+	 *
+	 * Registering does NOT require the surface to be `register()`ed first — a panel
+	 * may be opened for a panel-only (`target:'panel'`) document that never created
+	 * an inset record. Fan-out in `post()` is independent of the inset record's
+	 * presence for views.
+	 */
+	addView(surfaceId: string, view: SurfaceView): Disposable {
+		let set = this._views.get(surfaceId);
+		if (!set) {
+			set = new Set<SurfaceView>();
+			this._views.set(surfaceId, set);
+		}
+		set.add(view);
+		return { dispose: () => this._removeView(surfaceId, view) };
+	}
+
+	/** Remove a single view; drops the surface's view set once it is empty. */
+	private _removeView(surfaceId: string, view: SurfaceView): void {
+		const set = this._views.get(surfaceId);
+		if (!set) {
+			return;
+		}
+		set.delete(view);
+		if (set.size === 0) {
+			this._views.delete(surfaceId);
+		}
+	}
 
 	// -------------------------------------------------------------------------
 	// EMIT BRIDGE — stash / drain
@@ -169,14 +237,29 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Forward a HostToInsetMessage to the inset transport.
-	 * Silently dropped if the surface has already been disposed.
+	 * Forward a HostToInsetMessage to BOTH the core inset transport AND every
+	 * registered {@link SurfaceView} (panel host) for this surface.
+	 *
+	 * - INSET PATH: gated on the surface record — once `disposeSurface` removes it,
+	 *   inset forwarding is dropped (a torn-down inset must not be addressed). When
+	 *   there is no inset at all (panel-only surface) the transport call is a
+	 *   harmless no-op (the `_a2ui.postToSurface` command finds no inset and returns).
+	 * - VIEW PATH: each registered view receives the message. Views are managed by
+	 *   their own lifecycle (panel disposal removes the view), so they fan out
+	 *   whenever any are present, independent of the inset record. This is what
+	 *   keeps a standalone panel in sync with the live feed / interaction echoes.
 	 */
 	post(surfaceId: string, msg: HostToInsetMessage): void {
-		if (!this._surfaces.has(surfaceId)) {
-			return; // surface disposed or never registered — drop
+		if (this._surfaces.has(surfaceId)) {
+			this._deps.insetTransport.post(surfaceId, msg);
 		}
-		this._deps.insetTransport.post(surfaceId, msg);
+		const views = this._views.get(surfaceId);
+		if (views) {
+			// Copy to a snapshot so a view removing itself during post() is safe.
+			for (const view of [...views]) {
+				view.post(msg);
+			}
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -222,6 +305,16 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 		if (subscription) {
 			this.bindMcp(surfaceId, subscription);
 		}
+	}
+
+	/**
+	 * Open (or reveal + re-render) a standalone webview PANEL for a surface.
+	 * Delegates to the injected {@link SurfaceManagerDeps.openPanel}; no-op when
+	 * no panel factory is wired (inset-only wirings/tests). Called by the render
+	 * path for `target:'panel'`/`'both'` documents.
+	 */
+	openPanel(surfaceId: string, doc: object, runtimeUri: Uri): void {
+		this._deps.openPanel?.(surfaceId, doc, runtimeUri);
 	}
 
 	// -------------------------------------------------------------------------
@@ -316,5 +409,9 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 		// Remove the record BEFORE disposing so re-entrant calls are no-ops.
 		this._surfaces.delete(surfaceId);
 		record.mcpSubscription?.dispose();
+		// Drop any registered views (panel hosts) for this surface so subsequent
+		// posts fan out to nobody. The panel host's own onDidDispose still runs
+		// independently; this just guarantees the manager holds no stale view refs.
+		this._views.delete(surfaceId);
 	}
 }
