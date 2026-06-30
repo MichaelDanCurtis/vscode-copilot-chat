@@ -82,8 +82,8 @@ export interface PendingEmit {
  */
 export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	private readonly _surfaces = new Map<string, SurfaceRecord>();
-	/** FIFO queue of surfaces reserved by the stream-less tool path, awaiting emit. */
-	private readonly _pendingEmits: PendingEmit[] = [];
+	/** Pending-emit records keyed by surfaceId. O(1) targeted drain. */
+	private readonly _pendingEmits = new Map<string, PendingEmit>();
 
 	constructor(private readonly _deps: SurfaceManagerDeps) { }
 
@@ -94,18 +94,40 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	/**
 	 * Stash a surface that was reserved by the stream-less `RenderA2uiTool.invoke()`
 	 * path. The record is replayed by the stream-owning handler via
-	 * {@link drainPendingEmits}.
+	 * {@link drainPendingEmit} or {@link drainPendingEmits}.
+	 *
+	 * Keyed by surfaceId — a second stash for the same id overwrites the first,
+	 * which is safe because `register()` is also idempotent per surfaceId.
 	 */
 	stashPendingEmit(record: PendingEmit): void {
-		this._pendingEmits.push(record);
+		this._pendingEmits.set(record.surfaceId, record);
 	}
 
 	/**
-	 * Return all stashed pending emits and clear the queue. Returns a fresh array
+	 * Drain and return the pending emit for a **specific** surfaceId (O(1)).
+	 * Returns `undefined` and leaves the map untouched if no record exists.
+	 * This is the targeted drain used by the emit bridge to prevent cross-tool
+	 * and cross-session emission.
+	 */
+	drainPendingEmit(surfaceId: string): PendingEmit | undefined {
+		const record = this._pendingEmits.get(surfaceId);
+		if (record !== undefined) {
+			this._pendingEmits.delete(surfaceId);
+		}
+		return record;
+	}
+
+	/**
+	 * Return ALL stashed pending emits and clear the map. Returns a fresh array
 	 * each call; a second drain (with no intervening stash) returns `[]`.
+	 *
+	 * Retained for any callers that need a full drain; the emit bridge now uses
+	 * the targeted {@link drainPendingEmit} instead.
 	 */
 	drainPendingEmits(): PendingEmit[] {
-		return this._pendingEmits.splice(0, this._pendingEmits.length);
+		const all = [...this._pendingEmits.values()];
+		this._pendingEmits.clear();
+		return all;
 	}
 
 	// -------------------------------------------------------------------------

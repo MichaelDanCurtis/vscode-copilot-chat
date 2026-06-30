@@ -10,6 +10,15 @@ import type { PendingEmit } from './surfaceManager';
  * reserved-but-not-yet-emitted surfaces in the stream-owning handler.
  */
 export interface PendingEmitDrain {
+	/**
+	 * Drain and return the pending emit for a specific surfaceId, or `undefined`
+	 * if none exists. This is the targeted path used by the bridge to prevent
+	 * cross-tool and cross-session emission.
+	 */
+	drainPendingEmit(surfaceId: string): PendingEmit | undefined;
+	/**
+	 * Drain all pending emits (retained for callers that need the full batch).
+	 */
 	drainPendingEmits(): PendingEmit[];
 }
 
@@ -49,26 +58,28 @@ export function getA2uiEmitDrain(): PendingEmitDrain | undefined {
 }
 
 /**
- * THE BRIDGE: drain every surface the stream-less tool path reserved and replay
- * each through `stream.generativeUI(...)`. Safe no-op when nothing is stashed,
+ * THE BRIDGE (targeted): drain the surface for a SPECIFIC surfaceId that was
+ * reserved by the stream-less `render_a2ui` tool path, and replay it through
+ * `stream.generativeUI(...)`. Safe no-op when nothing is stashed for that id,
  * the stream is absent, or A2UI was never wired.
  *
  * The `drain` is passed explicitly (kept pure + unit-testable). Call sites that
  * use the shared instance resolve it via {@link getA2uiEmitDrain}; see
  * {@link flushSharedA2uiPendingEmits} for the convenience wrapper.
  */
-export function flushA2uiPendingEmits(drain: PendingEmitDrain | undefined, stream: GenerativeUIStream | undefined): void {
-	// No stream → do NOT drain. Draining would clear the queue and silently
+export function flushA2uiPendingEmits(drain: PendingEmitDrain | undefined, stream: GenerativeUIStream | undefined, surfaceId: string): void {
+	// No stream → do NOT drain. Draining would clear the record and silently
 	// discard the surface; leaving it stashed lets a later round emit it.
 	if (!stream || !drain) {
 		return;
 	}
-	for (const e of drain.drainPendingEmits()) {
+	const e = drain.drainPendingEmit(surfaceId);
+	if (e !== undefined) {
 		stream.generativeUI(e.surfaceId, e.runtimeUri, e.doc, e.version);
 	}
 }
 
-/** Convenience wrapper: flush using the shared (activate-published) drain. */
-export function flushSharedA2uiPendingEmits(stream: GenerativeUIStream | undefined): void {
-	flushA2uiPendingEmits(_drain, stream);
+/** Convenience wrapper: flush a specific surfaceId using the shared (activate-published) drain. */
+export function flushSharedA2uiPendingEmits(surfaceId: string, stream: GenerativeUIStream | undefined): void {
+	flushA2uiPendingEmits(_drain, stream, surfaceId);
 }

@@ -90,38 +90,87 @@ describe('SurfaceManager', () => {
 		});
 	});
 
-	describe('stashPendingEmit + drainPendingEmits (EMIT BRIDGE)', () => {
+	describe('stashPendingEmit + drainPendingEmit/drainPendingEmits (EMIT BRIDGE)', () => {
 		const rec = (surfaceId: string) => ({ surfaceId, runtimeUri: FAKE_URI, doc: { surfaceId }, version: 1 });
 
-		it('drain returns nothing when nothing was stashed', () => {
+		// --- targeted drain (drainPendingEmit) ---
+
+		it('targeted drain returns undefined when nothing was stashed', () => {
 			const { manager } = makeManager();
-			expect(manager.drainPendingEmits()).toEqual([]);
+			expect(manager.drainPendingEmit('x')).toBeUndefined();
 		});
 
-		it('drain returns stashed records in FIFO order, then clears them', () => {
+		it('targeted drain returns and removes only the requested surfaceId', () => {
 			const { manager } = makeManager();
 			manager.stashPendingEmit(rec('a'));
 			manager.stashPendingEmit(rec('b'));
-			const drained = manager.drainPendingEmits();
-			expect(drained.map(r => r.surfaceId)).toEqual(['a', 'b']);
-			// Second drain (no intervening stash) is empty — the queue was cleared.
-			expect(manager.drainPendingEmits()).toEqual([]);
+			expect(manager.drainPendingEmit('a')).toEqual(rec('a'));
+			// 'b' must still be present
+			expect(manager.drainPendingEmit('b')).toEqual(rec('b'));
+			// both now consumed
+			expect(manager.drainPendingEmit('a')).toBeUndefined();
+			expect(manager.drainPendingEmit('b')).toBeUndefined();
+		});
+
+		it('targeted drain for an absent surfaceId does not disturb other entries', () => {
+			const { manager } = makeManager();
+			manager.stashPendingEmit(rec('a'));
+			expect(manager.drainPendingEmit('missing')).toBeUndefined();
+			// 'a' still intact
+			expect(manager.drainPendingEmit('a')).toEqual(rec('a'));
 		});
 
 		it('records carry runtimeUri/doc/version through unchanged', () => {
 			const { manager } = makeManager();
 			const r = rec('surf-1');
 			manager.stashPendingEmit(r);
-			const [drained] = manager.drainPendingEmits();
-			expect(drained).toEqual(r);
+			expect(manager.drainPendingEmit('surf-1')).toEqual(r);
 		});
 
-		it('a fresh stash after drain is independently drainable', () => {
+		it('a fresh stash after targeted drain is independently drainable', () => {
+			const { manager } = makeManager();
+			manager.stashPendingEmit(rec('a'));
+			manager.drainPendingEmit('a');
+			manager.stashPendingEmit(rec('c'));
+			expect(manager.drainPendingEmit('c')).toEqual(rec('c'));
+		});
+
+		// --- batch drain (drainPendingEmits) — retained for backward compatibility ---
+
+		it('batch drain returns nothing when nothing was stashed', () => {
+			const { manager } = makeManager();
+			expect(manager.drainPendingEmits()).toEqual([]);
+		});
+
+		it('batch drain returns all stashed records, then clears them', () => {
+			const { manager } = makeManager();
+			manager.stashPendingEmit(rec('a'));
+			manager.stashPendingEmit(rec('b'));
+			const drained = manager.drainPendingEmits();
+			expect(drained.map(r => r.surfaceId).sort()).toEqual(['a', 'b']);
+			// Second drain (no intervening stash) is empty.
+			expect(manager.drainPendingEmits()).toEqual([]);
+		});
+
+		it('a fresh stash after batch drain is independently drainable', () => {
 			const { manager } = makeManager();
 			manager.stashPendingEmit(rec('a'));
 			manager.drainPendingEmits();
 			manager.stashPendingEmit(rec('c'));
 			expect(manager.drainPendingEmits().map(r => r.surfaceId)).toEqual(['c']);
+		});
+
+		// --- cross-surface isolation ---
+
+		it('stashing same surfaceId twice overwrites (idempotent, no duplicate emit)', () => {
+			const { manager } = makeManager();
+			const r1 = { surfaceId: 's', runtimeUri: FAKE_URI, doc: { v: 1 }, version: 1 };
+			const r2 = { surfaceId: 's', runtimeUri: FAKE_URI, doc: { v: 2 }, version: 2 };
+			manager.stashPendingEmit(r1);
+			manager.stashPendingEmit(r2);
+			// Only the latest record survives
+			expect(manager.drainPendingEmit('s')).toEqual(r2);
+			expect(manager.drainPendingEmit('s')).toBeUndefined();
 		});
 	});
 

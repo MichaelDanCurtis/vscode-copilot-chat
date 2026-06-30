@@ -289,10 +289,23 @@ function buildToolResultElement(accessor: ServicesAccessor, props: ToolResultOpt
 					toolResult = await toolsService.invokeToolWithEndpoint(props.toolCall.name, invocationOptions, promptEndpoint, props.token);
 					sendInvokedToolTelemetry(promptEndpoint.acquireTokenizer(), telemetryService, props.toolCall.name, toolResult);
 
-					// EMIT BRIDGE ("Option A"): the stream-less render_a2ui tool only
-					// reserves + stashes its surface; replay any stashed emits now,
-					// while the live ChatResponseStream is in scope. No-op otherwise.
-					flushSharedA2uiPendingEmits(promptContext.stream);
+					// EMIT BRIDGE ("Option A"): only replay when this invocation IS
+					// render_a2ui, and only for its own surfaceId — prevents cross-tool
+					// and cross-session bleed under parallel/eager tool execution.
+					if (props.toolCall.name === 'render_a2ui') {
+						let a2uiSurfaceId: string | undefined;
+						try {
+							const parsed = typeof inputObj === 'object' && inputObj !== null
+								? inputObj
+								: JSON.parse(props.toolCall.arguments);
+							a2uiSurfaceId = (parsed as Record<string, unknown>)['surfaceId'] as string | undefined;
+						} catch {
+							// malformed input — surfaceId stays undefined, no emit
+						}
+						if (a2uiSurfaceId) {
+							flushSharedA2uiPendingEmits(a2uiSurfaceId, promptContext.stream);
+						}
+					}
 
 					// Run hook context handling after tool execution
 					appendHookContext(toolResult, hookResult, chatHookService, props, inputObj, promptContext);
