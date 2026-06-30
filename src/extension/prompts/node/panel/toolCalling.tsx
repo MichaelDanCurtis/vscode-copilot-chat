@@ -298,7 +298,7 @@ function buildToolResultElement(accessor: ServicesAccessor, props: ToolResultOpt
 							const parsed = typeof inputObj === 'object' && inputObj !== null
 								? inputObj
 								: JSON.parse(props.toolCall.arguments);
-							a2uiSurfaceId = (parsed as Record<string, unknown>)['surfaceId'] as string | undefined;
+							a2uiSurfaceId = ((parsed as Record<string, unknown>)['doc'] as Record<string, unknown> | undefined)?.['surfaceId'] as string | undefined;
 						} catch {
 							// malformed input — surfaceId stays undefined, no emit
 						}
