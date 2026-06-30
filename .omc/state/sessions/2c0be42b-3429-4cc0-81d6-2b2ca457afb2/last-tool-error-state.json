@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git add -A && git commit -m \\\"test(a2ui): rename render_a2ui test to .spec.ts (repo vitest convention); revert vite include glob\\\"\"}",
+  "error": "Exit code 1\n[STARTED] Preparing lint-staged...\n[COMPLETED] Preparing lint-staged...\n[STARTED] Running tasks for staged files...\n[STARTED] lint-staged.config.js — 7 files\n[STARTED] !({.esbuild.ts,test/simulation/fixtures/**,test/scenarios/**,.vscode/extensions/**,**/vscode.proposed.*})*{.ts,.js,.tsx} — 2 files\n[STARTED] npm run tsfmt -- /Users/michaelcurtis/Github-Copilot/vscode-copilot-chat/src/extension/a2ui/node/renderA2uiTool.spec.ts\n[COMPLETED] npm run tsfmt -- /Users/michaelcurtis/Github-Co...",
+  "timestamp": "2026-06-30T02:38:47.474Z",
+  "retry_count": 1
+}

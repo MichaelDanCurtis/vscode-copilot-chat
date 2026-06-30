@@ -18,7 +18,7 @@ const exclude = [
 // reference https://vitest.dev/config/#configuring-vitest
 export default defineConfig(({ mode }) => ({
 	test: {
-		include: ['**/*.spec.ts', '**/*.spec.tsx', '**/*.test.ts', '**/*.test.tsx'],
+		include: ['**/*.spec.ts', '**/*.spec.tsx'],
 		exclude,
 		env: loadEnv(mode, process.cwd(), ''),
 		alias: {
