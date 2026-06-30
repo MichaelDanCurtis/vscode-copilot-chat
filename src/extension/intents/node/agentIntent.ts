@@ -126,6 +126,10 @@ export const getAgentTools = async (accessor: ServicesAccessor, request: vscode.
 	// The tool is registered in core as a built-in but needs explicit opt-in here.
 	allowTools['task_complete'] = request.permissionLevel === 'autopilot';
 
+	// A2UI generative-UI tool: registered via ToolRegistry but, like task_complete,
+	// needs explicit opt-in here to be offered to the agent (it isn't picker-gated).
+	allowTools[ToolName.RenderA2ui] = true;
+
 	allowTools[ToolName.EditFilesPlaceholder] = false;
 	// todo@connor4312: string check here is for back-compat for 1.109 Insiders
 	if (Iterable.some(request.tools, ([t, enabled]) => (typeof t === 'string' ? t : t.name) === ContributedToolName.EditFilesPlaceholder && enabled === false)) {
