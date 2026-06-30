@@ -1194,6 +1194,25 @@
 				"legacyToolReferenceFullNames": [
 					"editFiles"
 				]
+			},
+			{
+				"name": "render_a2ui",
+				"displayName": "Render A2UI",
+				"userDescription": "Renders an A2UI component tree as a live in-bubble UI surface.",
+				"modelDescription": "Validates an A2UI document against the registered component catalog and, on success, renders it as a live generative-UI surface inside the chat bubble. Call this tool whenever you want to display interactive UI elements to the user. Pass the complete A2UI document as `doc`. If validation fails the tool returns the errors so you can correct the document and retry.",
+				"icon": "$(layout)",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"doc": {
+							"type": "object",
+							"description": "The A2UI document to validate and render."
+						}
+					},
+					"required": [
+						"doc"
+					]
+				}
 			}
 		],
 		"languageModelToolSets": [
