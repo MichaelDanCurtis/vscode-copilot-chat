@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import type { SurfaceRegistrar } from './renderA2uiTool';
 import type { PendingEmit } from './surfaceManager';
 
 /**
@@ -55,6 +56,30 @@ export function setA2uiEmitDrain(drain: PendingEmitDrain | undefined): void {
 /** Resolve the shared SurfaceManager, or `undefined` if A2UI was never wired. */
 export function getA2uiEmitDrain(): PendingEmitDrain | undefined {
 	return _drain;
+}
+
+// ---------------------------------------------------------------------------
+// Shared SurfaceRegistrar accessor (for the internal-registry tool path)
+// ---------------------------------------------------------------------------
+//
+// `RenderA2uiTool` is now registered through the internal `ToolRegistry`, whose
+// ctors are DI-instantiated (`IInstantiationService.createInstance`). A
+// DI-instantiated ctor cannot receive the activate()-constructed `SurfaceManager`
+// via its constructor, so — exactly like the emit-drain holder above — we publish
+// the SAME `SurfaceManager` instance through this tiny module-level holder:
+// activate() calls `setA2uiSurfaceRegistrar(surfaceManager)`, and the tool reads
+// it via `getA2uiSurfaceRegistrar()` inside `invoke()`.
+
+let _surfaces: SurfaceRegistrar | undefined;
+
+/** Publish the shared SurfaceManager as the tool's SurfaceRegistrar (call once, from activate()). */
+export function setA2uiSurfaceRegistrar(surfaces: SurfaceRegistrar | undefined): void {
+	_surfaces = surfaces;
+}
+
+/** Resolve the shared SurfaceRegistrar, or `undefined` if A2UI was never wired. */
+export function getA2uiSurfaceRegistrar(): SurfaceRegistrar | undefined {
+	return _surfaces;
 }
 
 /**
