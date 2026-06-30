@@ -90,6 +90,41 @@ describe('SurfaceManager', () => {
 		});
 	});
 
+	describe('stashPendingEmit + drainPendingEmits (EMIT BRIDGE)', () => {
+		const rec = (surfaceId: string) => ({ surfaceId, runtimeUri: FAKE_URI, doc: { surfaceId }, version: 1 });
+
+		it('drain returns nothing when nothing was stashed', () => {
+			const { manager } = makeManager();
+			expect(manager.drainPendingEmits()).toEqual([]);
+		});
+
+		it('drain returns stashed records in FIFO order, then clears them', () => {
+			const { manager } = makeManager();
+			manager.stashPendingEmit(rec('a'));
+			manager.stashPendingEmit(rec('b'));
+			const drained = manager.drainPendingEmits();
+			expect(drained.map(r => r.surfaceId)).toEqual(['a', 'b']);
+			// Second drain (no intervening stash) is empty — the queue was cleared.
+			expect(manager.drainPendingEmits()).toEqual([]);
+		});
+
+		it('records carry runtimeUri/doc/version through unchanged', () => {
+			const { manager } = makeManager();
+			const r = rec('surf-1');
+			manager.stashPendingEmit(r);
+			const [drained] = manager.drainPendingEmits();
+			expect(drained).toEqual(r);
+		});
+
+		it('a fresh stash after drain is independently drainable', () => {
+			const { manager } = makeManager();
+			manager.stashPendingEmit(rec('a'));
+			manager.drainPendingEmits();
+			manager.stashPendingEmit(rec('c'));
+			expect(manager.drainPendingEmits().map(r => r.surfaceId)).toEqual(['c']);
+		});
+	});
+
 	describe('post', () => {
 		it('delegates to insetTransport.post with the same arguments', () => {
 			const { manager, post } = makeManager();

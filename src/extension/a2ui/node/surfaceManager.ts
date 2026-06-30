@@ -40,6 +40,26 @@ interface SurfaceRecord {
 }
 
 // ---------------------------------------------------------------------------
+// Pending-emit record (EMIT BRIDGE — "Option A")
+// ---------------------------------------------------------------------------
+
+/**
+ * A reserved-but-not-yet-emitted generative-UI surface.
+ *
+ * `RenderA2uiTool.invoke()` runs in the stream-less Language-Model Tool path:
+ * it can validate + reserve the surface but cannot emit the in-bubble inset
+ * (no `ChatResponseStream`). It therefore STASHES one of these records, which
+ * the stream-owning tool-calling handler later drains and replays through
+ * `stream.generativeUI(surfaceId, runtimeUri, doc, version)`.
+ */
+export interface PendingEmit {
+	readonly surfaceId: string;
+	readonly runtimeUri: Uri;
+	readonly doc: object;
+	readonly version: number;
+}
+
+// ---------------------------------------------------------------------------
 // SurfaceManager
 // ---------------------------------------------------------------------------
 
@@ -62,8 +82,31 @@ interface SurfaceRecord {
  */
 export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	private readonly _surfaces = new Map<string, SurfaceRecord>();
+	/** FIFO queue of surfaces reserved by the stream-less tool path, awaiting emit. */
+	private readonly _pendingEmits: PendingEmit[] = [];
 
 	constructor(private readonly _deps: SurfaceManagerDeps) { }
+
+	// -------------------------------------------------------------------------
+	// EMIT BRIDGE — stash / drain
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Stash a surface that was reserved by the stream-less `RenderA2uiTool.invoke()`
+	 * path. The record is replayed by the stream-owning handler via
+	 * {@link drainPendingEmits}.
+	 */
+	stashPendingEmit(record: PendingEmit): void {
+		this._pendingEmits.push(record);
+	}
+
+	/**
+	 * Return all stashed pending emits and clear the queue. Returns a fresh array
+	 * each call; a second drain (with no intervening stash) returns `[]`.
+	 */
+	drainPendingEmits(): PendingEmit[] {
+		return this._pendingEmits.splice(0, this._pendingEmits.length);
+	}
 
 	// -------------------------------------------------------------------------
 	// SurfaceRegistrar

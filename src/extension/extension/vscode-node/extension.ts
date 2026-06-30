@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import { ExtensionContext } from 'vscode';
 import { resolve } from '../../../util/vs/base/common/path';
+import { setA2uiEmitDrain } from '../../a2ui/node/a2uiEmitBridge';
 import { RenderA2uiTool } from '../../a2ui/node/renderA2uiTool';
 import { SurfaceManager } from '../../a2ui/node/surfaceManager';
 import { baseActivate } from '../vscode/extension';
@@ -77,4 +78,11 @@ function registerA2ui(context: ExtensionContext): void {
 	});
 
 	context.subscriptions.push(vscode.lm.registerTool('render_a2ui', new RenderA2uiTool(surfaceManager)));
+
+	// EMIT BRIDGE ("Option A"): publish the SAME SurfaceManager instance so the
+	// stream-owning tool-calling handler (buildToolResultElement in
+	// prompts/node/panel/toolCalling.tsx) can drain surfaces reserved by the
+	// stream-less tool path and emit them via stream.generativeUI(...).
+	setA2uiEmitDrain(surfaceManager);
+	context.subscriptions.push({ dispose: () => setA2uiEmitDrain(undefined) });
 }

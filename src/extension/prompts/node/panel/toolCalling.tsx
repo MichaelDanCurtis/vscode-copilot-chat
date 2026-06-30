@@ -6,6 +6,7 @@
 import { RequestMetadata, RequestType } from '@vscode/copilot-api';
 import { AssistantMessage, BasePromptElementProps, PromptRenderer as BasePromptRenderer, Chunk, IfEmpty, Image, JSONTree, PromptElement, PromptElementProps, PromptMetadata, PromptPiece, PromptSizing, TokenLimit, ToolCall, ToolMessage, useKeepWith, UserMessage } from '@vscode/prompt-tsx';
 import type { ChatParticipantToolToken, LanguageModelToolInvocationOptions, LanguageModelToolResult2, LanguageModelToolTokenizationOptions } from 'vscode';
+import { flushSharedA2uiPendingEmits } from '../../../a2ui/node/a2uiEmitBridge';
 import { IAuthenticationService } from '../../../../platform/authentication/common/authentication';
 import { IChatHookService, IPreToolUseHookResult } from '../../../../platform/chat/common/chatHookService';
 import { ISessionTranscriptService } from '../../../../platform/chat/common/sessionTranscriptService';
@@ -287,6 +288,11 @@ function buildToolResultElement(accessor: ServicesAccessor, props: ToolResultOpt
 
 					toolResult = await toolsService.invokeToolWithEndpoint(props.toolCall.name, invocationOptions, promptEndpoint, props.token);
 					sendInvokedToolTelemetry(promptEndpoint.acquireTokenizer(), telemetryService, props.toolCall.name, toolResult);
+
+					// EMIT BRIDGE ("Option A"): the stream-less render_a2ui tool only
+					// reserves + stashes its surface; replay any stashed emits now,
+					// while the live ChatResponseStream is in scope. No-op otherwise.
+					flushSharedA2uiPendingEmits(promptContext.stream);
 
 					// Run hook context handling after tool execution
 					appendHookContext(toolResult, hookResult, chatHookService, props, inputObj, promptContext);

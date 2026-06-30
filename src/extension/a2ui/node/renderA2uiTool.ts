@@ -13,6 +13,12 @@ import { validateDocument, type A2uiDocument } from '@copilot/a2ui-runtime';
  */
 export interface SurfaceRegistrar {
 	register(surfaceId: string): { runtimeUri: import('vscode').Uri };
+	/**
+	 * Stash a reserved-but-not-yet-emitted surface so the stream-owning handler
+	 * can later replay it via `stream.generativeUI(...)`. Used by the stream-less
+	 * {@link RenderA2uiTool.invoke} path (the EMIT BRIDGE).
+	 */
+	stashPendingEmit(record: { surfaceId: string; runtimeUri: import('vscode').Uri; doc: object; version: number }): void;
 }
 
 /** Minimal stream shape this tool needs to emit a generative-UI inset part. */
@@ -70,9 +76,16 @@ export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput
 		if (!v.ok) {
 			return new LanguageModelToolResult([new LanguageModelTextPart(`A2UI invalid: ${v.errors.join('; ')}`)]);
 		}
-		// Reserve the surface + runtime URI. The in-bubble emit (stream.generativeUI)
-		// must be performed by the participant handler that owns the stream.
-		this.surfaces.register(input.doc.surfaceId);
+		// Reserve the surface + runtime URI, then STASH a pending-emit record.
+		// The in-bubble emit (stream.generativeUI) cannot happen here (no stream),
+		// so the stream-owning tool-calling handler drains and replays it later.
+		const { runtimeUri } = this.surfaces.register(input.doc.surfaceId);
+		this.surfaces.stashPendingEmit({
+			surfaceId: input.doc.surfaceId,
+			runtimeUri,
+			doc: input.doc,
+			version: input.doc.version,
+		});
 		return new LanguageModelToolResult([new LanguageModelTextPart(`Rendered surface ${input.doc.surfaceId}`)]);
 	}
 }
