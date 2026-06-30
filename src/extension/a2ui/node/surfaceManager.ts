@@ -198,7 +198,8 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	 *
 	 * VISIBLE LOOP (Part C.3 seam): after dispatching, this bumps a per-surface
 	 * click counter and records the action name, then pushes a STATE_DELTA back to
-	 * the inset (`replace /clicks`, `replace /lastAction`). A `bind`-ed `text`
+	 * the inset (`add /clicks`, `add /lastAction` — `add` is add-or-replace, so it
+	 * is safe on the first click when the keys are still absent). A `bind`-ed `text`
 	 * component re-renders with the new value, closing the round-trip. This is the
 	 * exact seam Phase 3 (live MCP) will feed from real tool results — the echo
 	 * shape stays, only its source changes.
