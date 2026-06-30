@@ -88,6 +88,12 @@ function registerA2ui(context: ExtensionContext): void {
 	// the pipe can be created before the manager (the manager needs the pipe for
 	// startLiveFeed). The channel forwards to the manager once it exists; a holder
 	// object breaks the construction cycle without a reassigned binding.
+	// Diagnostics channel for the A2UI feature (e.g. live-feed source selection).
+	// This bootstrap activate() has no DI accessor in scope, so an output channel
+	// is the idiomatic sink here rather than console.* (per repo logging rules).
+	const a2uiLog = vscode.window.createOutputChannel('A2UI');
+	context.subscriptions.push(a2uiLog);
+
 	const channelHolder: { manager: SurfaceManager | undefined } = { manager: undefined };
 	const agUiBridge = new AgUiBridge({ post: (surfaceId, msg) => channelHolder.manager?.post(surfaceId, msg) });
 	const mcpDataPipe = new McpDataPipe(agUiBridge);
@@ -113,7 +119,7 @@ function registerA2ui(context: ExtensionContext): void {
 			const source = createLiveSource(
 				live,
 				undefined /* TODO(phase3): resolve a concrete McpClientLike */,
-				message => console.warn(message),
+				message => a2uiLog.appendLine(message),
 			);
 			return mcpDataPipe.subscribe(surfaceId, source, live.name ?? live.stateKey);
 		},
