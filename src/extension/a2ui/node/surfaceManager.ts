@@ -8,6 +8,7 @@ import type { HostToInsetMessage } from '@copilot/a2ui-runtime';
 import type { SurfaceRegistrar } from './renderA2uiTool';
 import type { SurfaceChannel } from './agUiBridge';
 import type { Disposable } from './mcpDataPipe';
+import type { LiveBinding } from './dataSources';
 
 // ---------------------------------------------------------------------------
 // Collaborator interfaces (injected — never concrete here)
@@ -28,6 +29,17 @@ export interface SurfaceManagerDeps {
 	enqueueAgentTurn(surfaceId: string, interaction: unknown): void;
 	/** Resolve the runtime asset URI for a surface (injectable for tests). */
 	resolveRuntimeUri(surfaceId: string): Uri;
+	/**
+	 * Start a live data feed for a surface and return its Disposable, or
+	 * `undefined` if no feed should run. Injected at activation: it constructs
+	 * the matching SnapshotSource (demo/mcp), subscribes it through the
+	 * McpDataPipe (which diffs snapshots into STATE_DELTAs), and returns the
+	 * subscription Disposable so `disposeSurface` can tear the feed down.
+	 *
+	 * Optional so existing tests/wirings that never opt into live feeds need
+	 * not provide it.
+	 */
+	startLiveFeed?(surfaceId: string, live: LiveBinding): Disposable | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +194,33 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 		const record = this._surfaces.get(surfaceId);
 		if (record) {
 			record.mcpSubscription = subscription;
+		}
+	}
+
+	/**
+	 * Start a live data feed for a surface IF the rendered document declares a
+	 * `live` binding. Called by the render path right after `register()`.
+	 *
+	 * Delegates source construction + subscription to the injected
+	 * {@link SurfaceManagerDeps.startLiveFeed}; the returned Disposable is stored
+	 * via {@link bindMcp} so {@link disposeSurface} tears the feed down. No-op
+	 * when no `live` binding is present, no feed factory is wired, or the surface
+	 * is unknown.
+	 *
+	 * TIMING: the feed may start before the inset reports READY. That is benign —
+	 * the source ticks continuously, so the chart populates within ~1 interval
+	 * once the inset is listening. No READY handshake is needed.
+	 */
+	maybeStartLiveFeed(surfaceId: string, live: LiveBinding | undefined): void {
+		if (!live || !this._deps.startLiveFeed) {
+			return;
+		}
+		if (!this._surfaces.has(surfaceId)) {
+			return; // unknown/disposed surface
+		}
+		const subscription = this._deps.startLiveFeed(surfaceId, live);
+		if (subscription) {
+			this.bindMcp(surfaceId, subscription);
 		}
 	}
 

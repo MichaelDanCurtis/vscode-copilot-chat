@@ -11,6 +11,7 @@ import { AgUiBridge } from '../../a2ui/node/agUiBridge';
 import { createInsetTransport, ROUTE_INTERACTION_COMMAND } from '../../a2ui/node/insetTransport';
 import { McpDataPipe } from '../../a2ui/node/mcpDataPipe';
 import { SurfaceManager } from '../../a2ui/node/surfaceManager';
+import { createLiveSource } from '../../a2ui/node/dataSources';
 import { baseActivate } from '../vscode/extension';
 import { vscodeNodeContributions } from './contributions';
 import { registerServices } from './services';
@@ -79,6 +80,18 @@ export function activate(context: ExtensionContext, forceActivation?: boolean) {
  * handler that owns the stream (via {@link RenderA2uiTool.invokeWith}).
  */
 function registerA2ui(context: ExtensionContext): void {
+	// LIVE DATA PATH: the bridge + MCP pipe carry deltas end-to-end. The bridge's
+	// SurfaceChannel is the SurfaceManager itself (set below), so
+	// bridge.emitStateDelta → surfaceManager.post → insetTransport → command →
+	// inset. McpDataPipe(bridge) diffs each SnapshotSource snapshot into those
+	// STATE_DELTA emits. We construct the bridge against a late-bound channel so
+	// the pipe can be created before the manager (the manager needs the pipe for
+	// startLiveFeed). The channel forwards to the manager once it exists; a holder
+	// object breaks the construction cycle without a reassigned binding.
+	const channelHolder: { manager: SurfaceManager | undefined } = { manager: undefined };
+	const agUiBridge = new AgUiBridge({ post: (surfaceId, msg) => channelHolder.manager?.post(surfaceId, msg) });
+	const mcpDataPipe = new McpDataPipe(agUiBridge);
+
 	const surfaceManager = new SurfaceManager({
 		resolveRuntimeUri: () => vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@copilot', 'a2ui-runtime', 'dist', 'runtime.iife.js'),
 		// LIVE host→inset push: forward through the internal core command which
@@ -90,17 +103,22 @@ function registerA2ui(context: ExtensionContext): void {
 		// the round-trip is visible. (A throwing callTool would abort before the echo.)
 		mcpPipe: { callTool: async () => ({ content: [] }) /* TODO(phase3): real MCP tool call */ },
 		enqueueAgentTurn: () => { /* TODO(phase3): agent reverse-channel for interactions */ },
+		// LIVE FEED: when a rendered doc declares a `live` binding, build the
+		// matching SnapshotSource (demo → IntervalSnapshotSource; mcp →
+		// McpResourceSnapshotSource when a client is wired, else demo fallback),
+		// subscribe it through the pipe, and return the subscription Disposable so
+		// disposeSurface tears the feed down. No MCP client is wired in this phase,
+		// so `source:'mcp'` logs a note and falls back to the demo feed.
+		startLiveFeed: (surfaceId, live) => {
+			const source = createLiveSource(
+				live,
+				undefined /* TODO(phase3): resolve a concrete McpClientLike */,
+				message => console.warn(message),
+			);
+			return mcpDataPipe.subscribe(surfaceId, source, live.name ?? live.stateKey);
+		},
 	});
-
-	// LIVE DATA PATH: wire the bridge + MCP pipe so deltas flow end-to-end.
-	// SurfaceManager is the bridge's SurfaceChannel, so bridge.emitStateDelta →
-	// surfaceManager.post → insetTransport → command → inset. McpDataPipe(bridge)
-	// converts MCP snapshot diffs into those STATE_DELTA emits. The actual MCP
-	// subscription (mcpDataPipe.subscribe(surfaceId, source, tool)) is created at
-	// runtime when a surface binds to a server (Phase-5.2 / runtime config).
-	const agUiBridge = new AgUiBridge(surfaceManager);
-	const mcpDataPipe = new McpDataPipe(agUiBridge);
-	void mcpDataPipe; // retained: the live subscription source is a runtime concern (see above).
+	channelHolder.manager = surfaceManager;
 
 	// The `render_a2ui` tool is registered through the internal `ToolRegistry`
 	// (see a2ui/node/renderA2uiTool.ts), imported by the tool barrel

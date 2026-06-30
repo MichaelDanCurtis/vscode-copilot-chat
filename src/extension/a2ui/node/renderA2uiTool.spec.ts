@@ -15,9 +15,21 @@ function makeSurfaces() {
 	return {
 		register: vi.fn().mockReturnValue({ runtimeUri }),
 		stashPendingEmit: vi.fn(),
+		maybeStartLiveFeed: vi.fn(),
 		runtimeUri,
 	} as any;
 }
+
+const liveDoc = {
+	version: 1,
+	surfaceId: 'live-1',
+	root: 'card1',
+	components: {
+		card1: { id: 'card1', type: 'card', props: { title: 'Live feed', children: ['chart1'] } },
+		chart1: { id: 'chart1', type: 'chart', props: { bind: 'series', kind: 'line' } },
+	},
+	live: { stateKey: 'series', source: 'demo', intervalMs: 1000 },
+};
 
 describe('RenderA2uiTool', () => {
 	afterEach(() => setA2uiSurfaceRegistrar(undefined));
@@ -37,6 +49,22 @@ describe('RenderA2uiTool', () => {
 		const res = await tool.invokeWith({ doc: bad } as any, stream);
 		expect(stream.generativeUI).not.toHaveBeenCalled();
 		expect(res.ok).toBe(false);
+	});
+
+	it('starts a live feed (invokeWith) when the doc declares a live binding', async () => {
+		const stream = { generativeUI: vi.fn() } as any;
+		const surfaces = makeSurfaces();
+		const tool = new RenderA2uiTool(surfaces);
+		await tool.invokeWith({ doc: liveDoc } as any, stream);
+		expect(surfaces.maybeStartLiveFeed).toHaveBeenCalledWith('live-1', liveDoc.live);
+	});
+
+	it('does NOT start a live feed for a doc without a live binding', async () => {
+		const stream = { generativeUI: vi.fn() } as any;
+		const surfaces = makeSurfaces();
+		const tool = new RenderA2uiTool(surfaces);
+		await tool.invokeWith({ doc: good } as any, stream);
+		expect(surfaces.maybeStartLiveFeed).toHaveBeenCalledWith('s1', undefined);
 	});
 
 	describe('invoke() (stream-less path) — EMIT BRIDGE stash', () => {

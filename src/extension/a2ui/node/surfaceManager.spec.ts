@@ -29,7 +29,7 @@ function makeDisposable(): { dispose: ReturnType<typeof vi.fn>; disposable: { di
 
 const FAKE_URI = Uri.file('/fake/runtime.js');
 
-function makeManager() {
+function makeManager(opts: { startLiveFeed?: ReturnType<typeof vi.fn> } = {}) {
 	const { post, transport } = makeInsetTransport();
 	const { callTool, pipe } = makeMcpPipe();
 	const enqueueAgentTurn = vi.fn();
@@ -40,6 +40,7 @@ function makeManager() {
 		mcpPipe: pipe,
 		enqueueAgentTurn,
 		resolveRuntimeUri,
+		startLiveFeed: opts.startLiveFeed,
 	});
 
 	return { manager, post, callTool, enqueueAgentTurn, resolveRuntimeUri };
@@ -227,6 +228,45 @@ describe('SurfaceManager', () => {
 			manager.disposeSurface('surf-1');
 			manager.disposeSurface('surf-1');
 			expect(dispose).toHaveBeenCalledOnce();
+		});
+	});
+
+	describe('maybeStartLiveFeed (Part C — live feed lifecycle)', () => {
+		const live = { stateKey: 'series', source: 'demo' as const, intervalMs: 1000 };
+
+		it('starts a feed and binds its Disposable when the doc declares a live binding', () => {
+			const { dispose, disposable } = makeDisposable();
+			const startLiveFeed = vi.fn().mockReturnValue(disposable);
+			const { manager } = makeManager({ startLiveFeed });
+
+			manager.register('surf-1');
+			manager.maybeStartLiveFeed('surf-1', live);
+
+			expect(startLiveFeed).toHaveBeenCalledWith('surf-1', live);
+			// The returned Disposable must be torn down on disposeSurface.
+			manager.disposeSurface('surf-1');
+			expect(dispose).toHaveBeenCalledOnce();
+		});
+
+		it('does nothing when no live binding is present', () => {
+			const startLiveFeed = vi.fn();
+			const { manager } = makeManager({ startLiveFeed });
+			manager.register('surf-1');
+			manager.maybeStartLiveFeed('surf-1', undefined);
+			expect(startLiveFeed).not.toHaveBeenCalled();
+		});
+
+		it('does nothing for an unknown/disposed surface', () => {
+			const startLiveFeed = vi.fn();
+			const { manager } = makeManager({ startLiveFeed });
+			manager.maybeStartLiveFeed('never-registered', live);
+			expect(startLiveFeed).not.toHaveBeenCalled();
+		});
+
+		it('is a no-op when no startLiveFeed factory is wired', () => {
+			const { manager } = makeManager();
+			manager.register('surf-1');
+			expect(() => manager.maybeStartLiveFeed('surf-1', live)).not.toThrow();
 		});
 	});
 

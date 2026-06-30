@@ -22,6 +22,12 @@ export interface SurfaceRegistrar {
 	 * {@link RenderA2uiTool.invoke} path (the EMIT BRIDGE).
 	 */
 	stashPendingEmit(record: { surfaceId: string; runtimeUri: import('vscode').Uri; doc: object; version: number }): void;
+	/**
+	 * If the rendered document declares a `live` binding, start a self-updating
+	 * data feed for the surface (and bind its Disposable so teardown stops it).
+	 * Optional so non-live registrars/tests need not implement it.
+	 */
+	maybeStartLiveFeed?(surfaceId: string, live: import('@copilot/a2ui-runtime').A2uiLiveBinding | undefined): void;
 }
 
 /** Minimal stream shape this tool needs to emit a generative-UI inset part. */
@@ -74,8 +80,13 @@ export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput
 	async invokeWith(input: IRenderA2uiInput, stream: GenerativeUIEmitter): Promise<{ ok: boolean; message: string }> {
 		const v = validateDocument(input.doc);
 		if (!v.ok) { return { ok: false, message: `A2UI invalid: ${v.errors.join('; ')}` }; }
-		const { runtimeUri } = this._resolveSurfaces().register(input.doc.surfaceId);
+		const surfaces = this._resolveSurfaces();
+		const { runtimeUri } = surfaces.register(input.doc.surfaceId);
 		stream.generativeUI(input.doc.surfaceId, runtimeUri, input.doc, input.doc.version);
+		// LIVE FEED: if the doc declares a `live` binding, start a self-updating
+		// feed now. The source ticks continuously, so the chart populates within
+		// ~1 interval even if the inset is not yet READY.
+		surfaces.maybeStartLiveFeed?.(input.doc.surfaceId, input.doc.live);
 		return { ok: true, message: `Rendered surface ${input.doc.surfaceId}` };
 	}
 
@@ -114,6 +125,10 @@ export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput
 			doc: input.doc,
 			version: input.doc.version,
 		});
+		// LIVE FEED: start the self-updating feed (if declared) at reserve time.
+		// The surface is registered, so STATE_DELTAs are buffered/posted through
+		// the same channel the inset will read once it is emitted + READY.
+		surfaces.maybeStartLiveFeed?.(input.doc.surfaceId, input.doc.live);
 		return new LanguageModelToolResult([new LanguageModelTextPart(`Rendered surface ${input.doc.surfaceId}`)]);
 	}
 }
