@@ -31,6 +31,7 @@ import { getGlobalContextCacheKey, GlobalContextMessageMetadata, RenderedUserMes
 import { InternalToolReference } from '../../../prompt/common/intents';
 import { IPromptVariablesService } from '../../../prompt/node/promptVariablesService';
 import { ToolName } from '../../../tools/common/toolNames';
+import { A2uiCatalogPrompt } from '../../../a2ui/node/a2uiCatalogPrompt';
 import { MemoryContextPrompt, MemoryInstructionsPrompt } from '../../../tools/node/memoryContextPrompt';
 import { TodoListContextPrompt } from '../../../tools/node/todoListContextPrompt';
 import { IPromptEndpoint, renderPromptElement } from '../base/promptRenderer';
@@ -110,6 +111,11 @@ export class AgentPrompt extends PromptElement<AgentPromptProps> {
 		const CopilotIdentityRules = customizations.CopilotIdentityRulesClass;
 		const SafetyRules = customizations.SafetyRulesClass;
 
+		// Teach the model the A2UI catalog whenever the render_a2ui tool is available, so it can
+		// autonomously compose a valid UI document on request. The catalog is sourced dynamically
+		// (getCatalogDescriptions) inside A2uiCatalogPrompt, so it stays in sync as the catalog grows.
+		const hasRenderA2uiTool = !!this.props.promptContext.tools?.availableTools?.find(tool => tool.name === ToolName.RenderA2ui);
+
 		const omitBaseAgentInstructions = this.configurationService.getConfig(ConfigKey.Advanced.OmitBaseAgentInstructions);
 		const baseAgentInstructions = <>
 			<SystemMessage>
@@ -121,6 +127,7 @@ export class AgentPrompt extends PromptElement<AgentPromptProps> {
 			<SystemMessage>
 				<MemoryInstructionsPrompt />
 			</SystemMessage>
+			{hasRenderA2uiTool && <A2uiCatalogPrompt priority={750} />}
 		</>;
 		const isAutopilot = this.props.promptContext.request?.permissionLevel === 'autopilot';
 		const sessionResource = this.props.promptContext.request?.sessionResource;
