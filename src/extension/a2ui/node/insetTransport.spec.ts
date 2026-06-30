@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { HostToInsetMessage } from '@copilot/a2ui-runtime';
-import { createInsetTransport, POST_TO_SURFACE_COMMAND } from './insetTransport';
+import { createInsetTransport, POST_TO_SURFACE_COMMAND, ROUTE_INTERACTION_COMMAND } from './insetTransport';
 
 describe('insetTransport', () => {
 	it('post() invokes the _a2ui.postToSurface command with (surfaceId, msg)', () => {
@@ -28,5 +28,9 @@ describe('insetTransport', () => {
 		transport.post('surf-2', msg);
 
 		expect(executeCommand).toHaveBeenCalledWith('_a2ui.postToSurface', 'surf-2', msg);
+	});
+
+	it('ROUTE_INTERACTION_COMMAND is the reverse-channel command string core hardcodes', () => {
+		expect(ROUTE_INTERACTION_COMMAND).toBe('_a2ui.routeInteraction');
 	});
 });

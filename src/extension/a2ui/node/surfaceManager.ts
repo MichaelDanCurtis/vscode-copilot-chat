@@ -37,6 +37,13 @@ export interface SurfaceManagerDeps {
 interface SurfaceRecord {
 	/** The MCP subscription for this surface. May be absent if bindMcp was never called. */
 	mcpSubscription: Disposable | undefined;
+	/**
+	 * Optimistic interaction-echo state for this surface (Part C.3 seam).
+	 * Incremented on every routed interaction; mirrored back to the inset via a
+	 * STATE_DELTA so a `bind`-ed text component visibly reflects the click.
+	 * Phase 3 (live MCP) will FEED this same state from real tool results.
+	 */
+	clicks: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +148,7 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	 */
 	register(surfaceId: string): { runtimeUri: Uri } {
 		this._surfaces.get(surfaceId)?.mcpSubscription?.dispose(); // evict prior subscription to avoid leak
-		this._surfaces.set(surfaceId, { mcpSubscription: undefined });
+		this._surfaces.set(surfaceId, { mcpSubscription: undefined, clicks: 0 });
 		return { runtimeUri: this._deps.resolveRuntimeUri(surfaceId) };
 	}
 
@@ -183,16 +190,28 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Route an interaction event from the inset to the correct back-end.
+	 * Route an interaction event from the inset to the correct back-end, then
+	 * post an OPTIMISTIC state echo so the user immediately SEES the click land.
 	 *
 	 * - `binding === 'mcp'`   → forward to `mcpPipe.callTool`
 	 * - `binding === 'agent'` → forward to `enqueueAgentTurn`
+	 *
+	 * VISIBLE LOOP (Part C.3 seam): after dispatching, this bumps a per-surface
+	 * click counter and records the action name, then pushes a STATE_DELTA back to
+	 * the inset (`replace /clicks`, `replace /lastAction`). A `bind`-ed `text`
+	 * component re-renders with the new value, closing the round-trip. This is the
+	 * exact seam Phase 3 (live MCP) will feed from real tool results — the echo
+	 * shape stays, only its source changes.
+	 *
+	 * @param action Optional action name (from the interaction binding) used for
+	 *   the `lastAction` echo; falls back to `componentId` when absent.
 	 */
 	async routeInteraction(
 		surfaceId: string,
 		componentId: string,
 		binding: 'mcp' | 'agent',
 		payload: unknown,
+		action?: string,
 	): Promise<void> {
 		if (binding === 'mcp') {
 			// The concrete client / tool-name resolution lives in McpDataPipe;
@@ -209,6 +228,34 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 		} else {
 			this._deps.enqueueAgentTurn(surfaceId, { componentId, payload });
 		}
+
+		// VISIBLE OPTIMISTIC ECHO: mirror the interaction into surface state so a
+		// `bind`-ed display updates. `post()` is a no-op if the surface was disposed.
+		this._echoInteraction(surfaceId, action ?? componentId);
+	}
+
+	/**
+	 * Bump the per-surface click counter, record the last action, and push a
+	 * STATE_DELTA to the inset. No-op for an unknown/disposed surface.
+	 */
+	private _echoInteraction(surfaceId: string, lastAction: string): void {
+		const record = this._surfaces.get(surfaceId);
+		if (!record) {
+			return; // surface disposed or never registered
+		}
+		record.clicks += 1;
+		this.post(surfaceId, {
+			type: 'STATE_DELTA',
+			surfaceId,
+			// `add` (not `replace`): JSON-Patch `add` on an object member is
+			// add-or-replace, so it is safe on the FIRST interaction (keys absent)
+			// and on every subsequent one. A `replace` would throw under the
+			// runtime's validating applyPatch when the key does not yet exist.
+			patch: [
+				{ op: 'add', path: '/clicks', value: record.clicks },
+				{ op: 'add', path: '/lastAction', value: lastAction },
+			],
+		});
 	}
 
 	// -------------------------------------------------------------------------

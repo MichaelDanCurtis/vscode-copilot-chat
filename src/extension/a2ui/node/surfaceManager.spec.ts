@@ -257,6 +257,55 @@ describe('SurfaceManager', () => {
 		});
 	});
 
+	describe('routeInteraction — optimistic visible echo (Part C.3 seam)', () => {
+		/** Pull the STATE_DELTA echo posts out of a recording transport spy. */
+		const echoes = (post: ReturnType<typeof vi.fn>) =>
+			post.mock.calls.filter(([, msg]) => (msg as HostToInsetMessage).type === 'STATE_DELTA');
+
+		it('posts a STATE_DELTA echo after routing (clicks + lastAction)', async () => {
+			const { manager, post } = makeManager();
+			manager.register('surf-1');
+			await manager.routeInteraction('surf-1', 'btn', 'mcp', {}, 'refresh');
+			const e = echoes(post);
+			expect(e).toHaveLength(1);
+			const [surfaceId, msg] = e[0];
+			expect(surfaceId).toBe('surf-1');
+			expect(msg).toEqual({
+				type: 'STATE_DELTA',
+				surfaceId: 'surf-1',
+				patch: [
+					{ op: 'add', path: '/clicks', value: 1 },
+					{ op: 'add', path: '/lastAction', value: 'refresh' },
+				],
+			});
+		});
+
+		it('increments the click counter across repeated interactions', async () => {
+			const { manager, post } = makeManager();
+			manager.register('surf-1');
+			await manager.routeInteraction('surf-1', 'btn', 'mcp', {}, 'a');
+			await manager.routeInteraction('surf-1', 'btn', 'agent', {}, 'b');
+			const clickValues = echoes(post).map(([, msg]) => (msg as { patch: { value: unknown }[] }).patch[0].value);
+			expect(clickValues).toEqual([1, 2]);
+		});
+
+		it('falls back to componentId for lastAction when no action is supplied', async () => {
+			const { manager, post } = makeManager();
+			manager.register('surf-1');
+			await manager.routeInteraction('surf-1', 'submitBtn', 'mcp', {});
+			const [, msg] = echoes(post)[0];
+			expect((msg as { patch: { value: unknown }[] }).patch[1].value).toBe('submitBtn');
+		});
+
+		it('does NOT echo for an unknown/disposed surface', async () => {
+			const { manager, post } = makeManager();
+			manager.register('surf-1');
+			manager.disposeSurface('surf-1');
+			await manager.routeInteraction('surf-1', 'btn', 'mcp', {}, 'x');
+			expect(echoes(post)).toHaveLength(0);
+		});
+	});
+
 	describe('post after disposeSurface (STATE_DELTA drop decision)', () => {
 		/**
 		 * BEHAVIOR DECISION: post() after disposeSurface() is a DROP.

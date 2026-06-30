@@ -8,7 +8,7 @@ import { ExtensionContext } from 'vscode';
 import { resolve } from '../../../util/vs/base/common/path';
 import { setA2uiEmitDrain, setA2uiSurfaceRegistrar } from '../../a2ui/node/a2uiEmitBridge';
 import { AgUiBridge } from '../../a2ui/node/agUiBridge';
-import { createInsetTransport } from '../../a2ui/node/insetTransport';
+import { createInsetTransport, ROUTE_INTERACTION_COMMAND } from '../../a2ui/node/insetTransport';
 import { McpDataPipe } from '../../a2ui/node/mcpDataPipe';
 import { SurfaceManager } from '../../a2ui/node/surfaceManager';
 import { baseActivate } from '../vscode/extension';
@@ -84,9 +84,12 @@ function registerA2ui(context: ExtensionContext): void {
 		// LIVE host→inset push: forward through the internal core command which
 		// looks the inset up by surfaceId and posts to its webview.
 		insetTransport: createInsetTransport((command, ...args) => vscode.commands.executeCommand(command, ...args)),
-		// Phase-5.2 wiring stubs (interaction reverse-channel) — see function doc.
-		mcpPipe: { callTool: async () => { throw new Error('A2UI mcpPipe.callTool not wired yet (Phase 5.2)'); } },
-		enqueueAgentTurn: () => { /* TODO(phase5.2): agent reverse-channel for interactions */ },
+		// Phase-3 wiring stubs (interaction reverse-channel). These are the seams
+		// Phase 3 (live MCP) replaces with real dispatch; for now they are benign
+		// no-ops so the OPTIMISTIC state echo in routeInteraction always fires and
+		// the round-trip is visible. (A throwing callTool would abort before the echo.)
+		mcpPipe: { callTool: async () => ({ content: [] }) /* TODO(phase3): real MCP tool call */ },
+		enqueueAgentTurn: () => { /* TODO(phase3): agent reverse-channel for interactions */ },
 	});
 
 	// LIVE DATA PATH: wire the bridge + MCP pipe so deltas flow end-to-end.
@@ -115,4 +118,17 @@ function registerA2ui(context: ExtensionContext): void {
 	// stream-less tool path and emit them via stream.generativeUI(...).
 	setA2uiEmitDrain(surfaceManager);
 	context.subscriptions.push({ dispose: () => setA2uiEmitDrain(undefined) });
+
+	// INTERACTION REVERSE-CHANNEL: register the core-invoked routing command.
+	// Core (`chatGenerativeUIInsetPart.ts`) forwards each inset INTERACTION by
+	// executing `_a2ui.routeInteraction` with (surfaceId, interactionMessage). We
+	// route it to the SurfaceManager, which dispatches (mcp/agent) and posts the
+	// optimistic STATE_DELTA echo back to the inset — closing the round-trip.
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			ROUTE_INTERACTION_COMMAND,
+			(surfaceId: string, msg: { componentId: string; binding: 'mcp' | 'agent'; action?: string; payload: unknown }) =>
+				surfaceManager.routeInteraction(surfaceId, msg.componentId, msg.binding, msg.payload, msg.action),
+		),
+	);
 }

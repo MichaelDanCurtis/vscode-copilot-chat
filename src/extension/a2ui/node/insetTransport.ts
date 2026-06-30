@@ -14,6 +14,16 @@ import type { HostToInsetMessage } from '@copilot/a2ui-runtime';
 export const POST_TO_SURFACE_COMMAND = '_a2ui.postToSurface';
 
 /**
+ * The internal core command the extension REGISTERS so that core can forward
+ * inset interactions back to the extension. Core (`chatGenerativeUIInsetPart.ts`)
+ * hardcodes this same string (it must not import this package); the extension is
+ * the one place that owns the constant. Invoked by core as
+ * `executeCommand(ROUTE_INTERACTION_COMMAND, surfaceId, interactionMessage)`.
+ * The underscore marks it internal (not surfaced in the command palette).
+ */
+export const ROUTE_INTERACTION_COMMAND = '_a2ui.routeInteraction';
+
+/**
  * Minimal executor surface. The caller (activate(), in a `vscode-node` module
  * that may import the live `vscode` namespace) passes
  * `vscode.commands.executeCommand`; tests pass a spy. Kept injectable so this
