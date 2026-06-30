@@ -147,8 +147,7 @@
 		"environmentPower",
 		"terminalTitle",
 		"toolInvocationApproveCombination",
-		"chatSessionCustomizationProvider",
-		"chatGenerativeUI"
+		"chatSessionCustomizationProvider"
 	],
 	"contributes": {
 		"languageModelTools": [
