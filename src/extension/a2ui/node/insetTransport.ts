@@ -24,6 +24,15 @@ export const POST_TO_SURFACE_COMMAND = '_a2ui.postToSurface';
 export const ROUTE_INTERACTION_COMMAND = '_a2ui.routeInteraction';
 
 /**
+ * Built-in VS Code command that focuses the Chat view and SETS its input box.
+ * Invoked with `{ query, isPartialQuery: true }` it pre-fills the chat input
+ * WITHOUT submitting, so a surface interaction (e.g. a seat click) becomes a
+ * non-spammy draft the user sends when ready. The agent reverse-channel
+ * (`createAgentRelay`) uses exactly this — never the auto-submitting variant.
+ */
+export const CHAT_OPEN_COMMAND = 'workbench.action.chat.open';
+
+/**
  * Minimal executor surface. The caller (activate(), in a `vscode-node` module
  * that may import the live `vscode` namespace) passes
  * `vscode.commands.executeCommand`; tests pass a spy. Kept injectable so this

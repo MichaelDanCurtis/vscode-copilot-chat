@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { ExtensionContext } from 'vscode';
 import { resolve } from '../../../util/vs/base/common/path';
 import { setA2uiEmitDrain, setA2uiSurfaceRegistrar } from '../../a2ui/node/a2uiEmitBridge';
+import { createAgentRelay } from '../../a2ui/node/agentRelay';
 import { AgUiBridge } from '../../a2ui/node/agUiBridge';
 import { createInsetTransport, ROUTE_INTERACTION_COMMAND } from '../../a2ui/node/insetTransport';
 import { McpDataPipe } from '../../a2ui/node/mcpDataPipe';
@@ -99,6 +100,13 @@ function registerA2ui(context: ExtensionContext): void {
 	const agUiBridge = new AgUiBridge({ post: (surfaceId, msg) => channelHolder.manager?.post(surfaceId, msg) });
 	const mcpDataPipe = new McpDataPipe(agUiBridge);
 
+	// AGENT REVERSE-CHANNEL: surface a `binding:'agent'` interaction into the chat
+	// by SETTING (not submitting) the chat input via `workbench.action.chat.open`
+	// with `isPartialQuery:true`. The relay accumulates grid selections per
+	// surfaceId into a readable summary. The node-layer relay never imports
+	// `vscode`; we inject the executor here.
+	const agentRelay = createAgentRelay((command, ...args) => vscode.commands.executeCommand(command, ...args));
+
 	// PANEL SURFACES: a per-surfaceId registry of standalone webview panel hosts.
 	// `openPanel` constructs/reuses an A2uiPanelHost (which registers itself as a
 	// SurfaceView via addView, keeping the panel in sync with the chat) and routes
@@ -122,7 +130,7 @@ function registerA2ui(context: ExtensionContext): void {
 		// no-ops so the OPTIMISTIC state echo in routeInteraction always fires and
 		// the round-trip is visible. (A throwing callTool would abort before the echo.)
 		mcpPipe: { callTool: async () => ({ content: [] }) /* TODO(phase3): real MCP tool call */ },
-		enqueueAgentTurn: () => { /* TODO(phase3): agent reverse-channel for interactions */ },
+		enqueueAgentTurn: agentRelay.enqueueAgentTurn,
 		// LIVE FEED: when a rendered doc declares a `live` binding, build the
 		// matching SnapshotSource (demo → IntervalSnapshotSource; mcp →
 		// McpResourceSnapshotSource when a client is wired, else demo fallback),
