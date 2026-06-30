@@ -1,0 +1,162 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import type * as vscode from 'vscode';
+import { LanguageModelTextPart, LanguageModelToolResult } from '../../../vscodeTypes';
+import { ToolName } from '../../tools/common/toolNames';
+import { ToolRegistry } from '../../tools/common/toolsRegistry';
+import { validateDocument, type A2uiDocument } from '@copilot/a2ui-runtime';
+import { getA2uiSurfaceRegistrar } from './a2uiEmitBridge';
+
+/**
+ * Narrow interface for surface registration. Task 3.6's SurfaceManager will implement this.
+ * Defined here to avoid importing SurfaceManager (Task 3.6) before it exists.
+ */
+export interface SurfaceRegistrar {
+	register(surfaceId: string): { runtimeUri: import('vscode').Uri };
+	/**
+	 * Stash a reserved-but-not-yet-emitted surface so the stream-owning handler
+	 * can later replay it via `stream.generativeUI(...)`. Used by the stream-less
+	 * {@link RenderA2uiTool.invoke} path (the EMIT BRIDGE).
+	 */
+	stashPendingEmit(record: { surfaceId: string; runtimeUri: import('vscode').Uri; doc: object; version: number }): void;
+	/**
+	 * If the rendered document declares a `live` binding, start a self-updating
+	 * data feed for the surface (and bind its Disposable so teardown stops it).
+	 * Optional so non-live registrars/tests need not implement it.
+	 */
+	maybeStartLiveFeed?(surfaceId: string, live: import('@copilot/a2ui-runtime').A2uiLiveBinding | undefined): void;
+	/**
+	 * Open (or reveal + re-render) a standalone webview PANEL for the surface.
+	 * Called by the render path for documents whose `target` is `'panel'` or
+	 * `'both'`. Optional so inset-only registrars/tests need not implement it.
+	 */
+	openPanel?(surfaceId: string, doc: object, runtimeUri: import('vscode').Uri): void;
+}
+
+/** Minimal stream shape this tool needs to emit a generative-UI inset part. */
+export interface GenerativeUIEmitter {
+	generativeUI(surfaceId: string, runtimeUri: import('vscode').Uri, initialDoc?: object, version?: number): void;
+}
+
+interface IRenderA2uiInput {
+	doc: A2uiDocument;
+}
+
+/**
+ * Tool that renders an A2UI document as an in-bubble generative-UI inset.
+ *
+ * IMPORTANT — two invocation paths exist because of a VS Code API constraint:
+ *
+ *  1. {@link invokeWith} is the path that actually emits the inset. It requires
+ *     a {@link GenerativeUIEmitter} (a `ChatResponseStream` carrying the proposed
+ *     `generativeUI()` method). Only a chat-participant request handler owns such
+ *     a stream, so this path is driven by the agent/participant layer.
+ *
+ *  2. {@link invoke} is the standard `vscode.LanguageModelTool.invoke(options, token)`
+ *     entry point used when the tool is registered via `vscode.lm.registerTool`.
+ *     The Language-Model Tool API does NOT pass a `ChatResponseStream` to a tool —
+ *     `invoke` only receives `options` (input + metadata) and a token, and may only
+ *     return a `LanguageModelToolResult`. Therefore `invoke` validates the document
+ *     and registers the surface (reserving its runtime URI), but it CANNOT itself
+ *     emit the inset. The actual `stream.generativeUI(...)` call must happen in the
+ *     participant handler that owns the stream (see wiring-report Part B / Phase 5).
+ */
+export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput> {
+
+	public static readonly toolName = ToolName.RenderA2ui;
+
+	/**
+	 * `surfaces` is optional because this tool is now registered through the
+	 * internal {@link ToolRegistry}, whose ctors are DI-instantiated with no
+	 * extra args. In that path `invoke()` resolves the shared SurfaceManager via
+	 * {@link getA2uiSurfaceRegistrar} (published by activate()). Tests and the
+	 * stream-bearing participant path still construct it directly with a concrete
+	 * registrar.
+	 */
+	constructor(private readonly surfaces?: SurfaceRegistrar) { }
+
+	/**
+	 * Stream-bearing path: validates, registers the surface, and emits the inset.
+	 * Used by the chat-participant handler (or tests) that owns a real
+	 * `ChatResponseStream`.
+	 */
+	async invokeWith(input: IRenderA2uiInput, stream: GenerativeUIEmitter): Promise<{ ok: boolean; message: string }> {
+		const v = validateDocument(input.doc);
+		if (!v.ok) { return { ok: false, message: `A2UI invalid: ${v.errors.join('; ')}` }; }
+		const surfaces = this._resolveSurfaces();
+		const { runtimeUri } = surfaces.register(input.doc.surfaceId);
+		// TARGET ROUTING: default 'inset'. 'inset'/'both' emit the in-bubble inset;
+		// 'panel'/'both' open a standalone webview panel. 'panel'-only must NOT emit
+		// the inset.
+		const target = input.doc.target ?? 'inset';
+		if (target === 'inset' || target === 'both') {
+			stream.generativeUI(input.doc.surfaceId, runtimeUri, input.doc, input.doc.version);
+		}
+		if (target === 'panel' || target === 'both') {
+			surfaces.openPanel?.(input.doc.surfaceId, input.doc, runtimeUri);
+		}
+		// LIVE FEED: if the doc declares a `live` binding, start a self-updating
+		// feed now (for ALL targets). The source ticks continuously, so a bound
+		// chart/table populates within ~1 interval even before READY, and the
+		// STATE_DELTAs fan out to the inset AND any panel view.
+		surfaces.maybeStartLiveFeed?.(input.doc.surfaceId, input.doc.live);
+		return { ok: true, message: `Rendered surface ${input.doc.surfaceId} (target: ${target})` };
+	}
+
+	/**
+	 * Resolve the {@link SurfaceRegistrar}: prefer a constructor-injected one
+	 * (participant path / tests), otherwise fall back to the shared instance
+	 * published by activate(). Throws if A2UI was never wired.
+	 */
+	private _resolveSurfaces(): SurfaceRegistrar {
+		const surfaces = this.surfaces ?? getA2uiSurfaceRegistrar();
+		if (!surfaces) {
+			throw new Error('A2UI SurfaceManager is not wired (setA2uiSurfaceRegistrar was never called).');
+		}
+		return surfaces;
+	}
+
+	/**
+	 * Standard `vscode.lm.registerTool` entry point. No stream is available here
+	 * (see class doc), so this validates and reserves the surface but does not
+	 * emit the inset. Returns a textual result the agent loop can render/inspect.
+	 */
+	async invoke(options: vscode.LanguageModelToolInvocationOptions<IRenderA2uiInput>, _token: vscode.CancellationToken): Promise<vscode.LanguageModelToolResult> {
+		const input = options.input;
+		const v = validateDocument(input.doc);
+		if (!v.ok) {
+			return new LanguageModelToolResult([new LanguageModelTextPart(`A2UI invalid: ${v.errors.join('; ')}`)]);
+		}
+		// Reserve the surface + runtime URI, then STASH a pending-emit record.
+		// The in-bubble emit (stream.generativeUI) cannot happen here (no stream),
+		// so the stream-owning tool-calling handler drains and replays it later.
+		const surfaces = this._resolveSurfaces();
+		const { runtimeUri } = surfaces.register(input.doc.surfaceId);
+		// TARGET ROUTING: default 'inset'. 'inset'/'both' STASH a pending inset emit
+		// (replayed later by the stream-owning handler). 'panel'/'both' open a
+		// standalone webview panel now. 'panel'-only must NOT stash an inset emit.
+		const target = input.doc.target ?? 'inset';
+		if (target === 'inset' || target === 'both') {
+			surfaces.stashPendingEmit({
+				surfaceId: input.doc.surfaceId,
+				runtimeUri,
+				doc: input.doc,
+				version: input.doc.version,
+			});
+		}
+		if (target === 'panel' || target === 'both') {
+			surfaces.openPanel?.(input.doc.surfaceId, input.doc, runtimeUri);
+		}
+		// LIVE FEED: start the self-updating feed (if declared) at reserve time for
+		// ALL targets. The surface is registered, so STATE_DELTAs are posted through
+		// the same channel the inset reads once emitted + READY, and fan out to any
+		// panel view immediately.
+		surfaces.maybeStartLiveFeed?.(input.doc.surfaceId, input.doc.live);
+		return new LanguageModelToolResult([new LanguageModelTextPart(`Rendered surface ${input.doc.surfaceId} (target: ${target})`)]);
+	}
+}
+
+ToolRegistry.registerTool(RenderA2uiTool);

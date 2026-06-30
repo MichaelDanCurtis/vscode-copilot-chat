@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "entries": {
+    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
+      "last_emitted_at_ms": 1782788539169,
+      "message": "Read multiple files in parallel when possible for faster analysis."
+    },
+    "7c217e3dd1ff08e814bf5d2eda61c83189620d18b1f77b64b6c7753b3297a64e": {
+      "last_emitted_at_ms": 1782788534717,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Review Task 3.6 (surface manager)"
+    },
+    "5dc1cc4087044102b1ec917b79fbade5a0c58393cc1fb9fccd6ee82fab7a392c": {
+      "last_emitted_at_ms": 1782788189089,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Review Task 3.5 (MCP data pipe)"
+    },
+    "37dfdf5288c4d7d892d74eb7467a2f9e6649ce4ada336c2b115c100667c22bce": {
+      "last_emitted_at_ms": 1782787867206,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Review Task 3.4 (AG-UI bridge)"
+    },
+    "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
+      "last_emitted_at_ms": 1782787581340,
+      "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
+    },
+    "4a302b2cb00d70c241157442d7e9f2eebece68214df0e6e25464d91f1794422a": {
+      "last_emitted_at_ms": 1782787571624,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Review Task 3.3 (catalog prompt)"
+    },
+    "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
+      "last_emitted_at_ms": 1782787111610,
+      "message": "Verify changes work after editing. Test functionality before marking complete."
+    },
+    "bc00fb242216bc4907b7a66ffa7e067c53e275a98866949aa66d0167993bf3fd": {
+      "last_emitted_at_ms": 1782787100691,
+      "message": "Spawning agent: general-purpose (haiku) | Task: Fix Task 3.2: align test to .spec.ts convention"
+    },
+    "ca2cb15063fb5f99c18531384c54393c7bb29125f9d268034e02257d88807495": {
+      "last_emitted_at_ms": 1782787007201,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Review Task 3.2 (render_a2ui tool)"
+    },
+    "600bbcfde5b4067f84b47cd0999e8148e686d3c0095e77c3953cb81af3c29e73": {
+      "last_emitted_at_ms": 1782786254957,
+      "message": "Spawning agent: general-purpose (sonnet) | Task: Review Task 3.1 (proposed API + stubs)"
+    }
+  },
+  "updated_at": "2026-06-30T03:02:19.169Z"
+}

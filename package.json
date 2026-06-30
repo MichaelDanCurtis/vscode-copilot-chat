@@ -1193,6 +1193,26 @@
 				"legacyToolReferenceFullNames": [
 					"editFiles"
 				]
+			},
+			{
+				"name": "render_a2ui",
+				"displayName": "Render A2UI",
+				"tags": [],
+				"userDescription": "Renders an A2UI component tree as a live in-bubble UI surface.",
+				"modelDescription": "Validates an A2UI document against the registered component catalog and, on success, renders it as a live generative-UI surface inside the chat bubble. Call this tool whenever you want to display interactive UI elements to the user. Pass the complete A2UI document as `doc`. If validation fails the tool returns the errors so you can correct the document and retry.",
+				"icon": "$(layout)",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"doc": {
+							"type": "object",
+							"description": "The A2UI document to validate and render."
+						}
+					},
+					"required": [
+						"doc"
+					]
+				}
 			}
 		],
 		"languageModelToolSets": [
@@ -6352,6 +6372,7 @@
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.2.91",
 		"@anthropic-ai/sdk": "^0.82.0",
+		"@copilot/a2ui-runtime": "file:../packages/a2ui-runtime",
 		"@github/blackbird-external-ingest-utils": "^0.3.0",
 		"@github/copilot": "^1.0.17",
 		"@google/genai": "^1.22.0",
@@ -6385,6 +6406,7 @@
 		"diff": "^8.0.3",
 		"dompurify": "^3.3.2",
 		"express": "^5.2.1",
+		"fast-json-patch": "^3.1.1",
 		"ignore": "^7.0.5",
 		"isbinaryfile": "^5.0.4",
 		"jsonc-parser": "^3.3.1",

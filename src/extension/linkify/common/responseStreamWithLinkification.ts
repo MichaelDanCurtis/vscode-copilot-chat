@@ -183,6 +183,10 @@ export class ResponseStreamWithLinkification implements FinalizableChatResponseS
 		return this;
 	}
 
+	generativeUI(surfaceId: string, runtimeUri: Uri, initialDoc?: object, version?: number): void {
+		this.enqueue(() => this._progress.generativeUI(surfaceId, runtimeUri, initialDoc, version), false);
+	}
+
 	//#endregion
 
 	private sequencer: Promise<unknown> = Promise.resolve();

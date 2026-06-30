@@ -1,0 +1,80 @@
+{
+  "agents": [
+    {
+      "agent_id": "a0448a7742f29582b",
+      "agent_type": "Explore",
+      "started_at": "2026-06-29T23:46:27.648Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-29T23:48:34.566Z",
+      "duration_ms": 126918
+    },
+    {
+      "agent_id": "a04a04b4d88ec06ef",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-30T02:24:15.059Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-30T02:25:26.867Z",
+      "duration_ms": 71808
+    },
+    {
+      "agent_id": "a74873f99587bd236",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-30T02:36:47.305Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-30T02:37:32.784Z",
+      "duration_ms": 45479
+    },
+    {
+      "agent_id": "a6285f4e15d7e3bf6",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-30T02:38:20.790Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-30T02:39:16.157Z",
+      "duration_ms": 55367
+    },
+    {
+      "agent_id": "aaed977b28d1d2b3d",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-30T02:46:11.719Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-30T02:46:56.750Z",
+      "duration_ms": 45031
+    },
+    {
+      "agent_id": "ac43435e4697cd7d2",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-30T02:51:07.297Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-30T02:51:44.735Z",
+      "duration_ms": 37438
+    },
+    {
+      "agent_id": "a77a6755542e5128e",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-30T02:56:29.188Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-30T02:57:14.178Z",
+      "duration_ms": 44990
+    },
+    {
+      "agent_id": "a380c1211671fd155",
+      "agent_type": "general-purpose",
+      "started_at": "2026-06-30T03:02:14.814Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-06-30T03:03:21.296Z",
+      "duration_ms": 66482
+    }
+  ],
+  "total_spawned": 8,
+  "total_completed": 8,
+  "total_failed": 0,
+  "last_updated": "2026-06-30T03:03:21.399Z"
+}

@@ -46,6 +46,9 @@ export class ChatResponseStreamImpl implements FinalizableChatResponseStream {
 			},
 			(usage) => {
 				stream.usage(usage);
+			},
+			(surfaceId, runtimeUri, initialDoc, version) => {
+				stream.generativeUI(surfaceId, runtimeUri, initialDoc, version);
 			}
 		);
 	}
@@ -72,6 +75,9 @@ export class ChatResponseStreamImpl implements FinalizableChatResponseStream {
 			},
 			(usage) => {
 				stream.usage(usage);
+			},
+			(surfaceId, runtimeUri, initialDoc, version) => {
+				stream.generativeUI(surfaceId, runtimeUri, initialDoc, version);
 			});
 	}
 
@@ -98,6 +104,9 @@ export class ChatResponseStreamImpl implements FinalizableChatResponseStream {
 			},
 			(usage) => {
 				stream.usage(usage);
+			},
+			(surfaceId, runtimeUri, initialDoc, version) => {
+				stream.generativeUI(surfaceId, runtimeUri, initialDoc, version);
 			});
 	}
 
@@ -109,6 +118,7 @@ export class ChatResponseStreamImpl implements FinalizableChatResponseStream {
 		private readonly _updateToolInvocation?: (toolCallId: string, streamData: ChatToolInvocationStreamData) => void,
 		private readonly _questionCarousel?: (questions: ChatQuestion[], allowSkip?: boolean) => Thenable<Record<string, unknown> | undefined>,
 		private readonly _usage?: (usage: ChatResultUsage) => void,
+		private readonly _generativeUI?: (surfaceId: string, runtimeUri: Uri, initialDoc?: object, version?: number) => void,
 	) { }
 
 	async finalize(): Promise<void> {
@@ -237,6 +247,12 @@ export class ChatResponseStreamImpl implements FinalizableChatResponseStream {
 	usage(usage: ChatResultUsage): void {
 		if (this._usage) {
 			this._usage(usage);
+		}
+	}
+
+	generativeUI(surfaceId: string, runtimeUri: Uri, initialDoc?: object, version?: number): void {
+		if (this._generativeUI) {
+			this._generativeUI(surfaceId, runtimeUri, initialDoc, version);
 		}
 	}
 }
