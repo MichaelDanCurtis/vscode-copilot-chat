@@ -3,7 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { BasePromptElementProps, PromptElement, PromptSizing, SystemMessage } from '@vscode/prompt-tsx';
+import {
+	BasePromptElementProps,
+	PromptElement,
+	PromptSizing,
+	SystemMessage,
+} from '@vscode/prompt-tsx';
 import { getCatalogDescriptions } from '@copilot/a2ui-runtime';
 
 export class A2uiCatalogPrompt extends PromptElement<BasePromptElementProps> {
@@ -11,8 +16,13 @@ export class A2uiCatalogPrompt extends PromptElement<BasePromptElementProps> {
 		const entries = getCatalogDescriptions();
 		return (
 			<SystemMessage priority={800}>
-				You may only render A2UI components of the following known types. Do not emit any other component type.<br />
-				{entries.map(({ type, description }) => `${type}: ${description}\n`).join('')}
+				You may only render A2UI components of the following known
+				<br />
+				types. Do not emit any other component type.
+				<br />
+				{entries
+					.map(({ type, description }) => `${type}: ${description}\n`)
+					.join('')}
 			</SystemMessage>
 		);
 	}

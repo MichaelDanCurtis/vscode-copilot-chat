@@ -9,7 +9,11 @@ import { getCatalogDescriptions } from '@copilot/a2ui-runtime';
 import { A2uiCatalogPrompt } from './a2uiCatalogPrompt';
 
 /** Minimal stub satisfying PromptSizing for unit tests that don't need token budgeting. */
-const stubSizing = { tokenBudget: 4096, countTokens: async () => 0, endpoint: {} } as unknown as PromptSizing;
+const stubSizing = {
+	tokenBudget: 4096,
+	countTokens: async () => 0,
+	endpoint: {},
+} as unknown as PromptSizing;
 
 describe('A2uiCatalogPrompt', () => {
 	it('rendered output contains every catalog type name', async () => {

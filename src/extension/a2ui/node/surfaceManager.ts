@@ -72,10 +72,10 @@ export class SurfaceManager implements SurfaceRegistrar, SurfaceChannel {
 	/**
 	 * Create a surface record and return the runtime asset URI.
 	 * Idempotent: registering the same surfaceId twice overwrites the record
-	 * (the previous MCP subscription is NOT automatically disposed — callers
-	 * should call disposeSurface first if re-registering is intentional).
+	 * (any prior MCP subscription is automatically disposed to avoid leaks).
 	 */
 	register(surfaceId: string): { runtimeUri: Uri } {
+		this._surfaces.get(surfaceId)?.mcpSubscription?.dispose(); // evict prior subscription to avoid leak
 		this._surfaces.set(surfaceId, { mcpSubscription: undefined });
 		return { runtimeUri: this._deps.resolveRuntimeUri(surfaceId) };
 	}

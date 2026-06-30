@@ -74,6 +74,20 @@ describe('SurfaceManager', () => {
 			expect(r1.runtimeUri).toBe(FAKE_URI);
 			expect(r2.runtimeUri).toBe(FAKE_URI);
 		});
+
+		it('disposes prior MCP subscription on re-register (leak prevention)', () => {
+			const { manager } = makeManager();
+			const { dispose: dispose1, disposable: disposable1 } = makeDisposable();
+			const { dispose: dispose2, disposable: disposable2 } = makeDisposable();
+			manager.register('surf-1');
+			manager.bindMcp('surf-1', disposable1);
+			expect(dispose1).not.toHaveBeenCalled();
+			manager.register('surf-1'); // re-register the same surfaceId
+			expect(dispose1).toHaveBeenCalledOnce(); // prior subscription must be disposed
+			manager.bindMcp('surf-1', disposable2);
+			manager.disposeSurface('surf-1');
+			expect(dispose2).toHaveBeenCalledOnce();
+		});
 	});
 
 	describe('post', () => {
