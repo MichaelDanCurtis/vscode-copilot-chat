@@ -3,8 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setA2uiSurfaceRegistrar } from './a2uiEmitBridge';
+import { describe, it, expect, vi } from 'vitest';
 import { RenderA2uiTool } from './renderA2uiTool';
 
 const good = { version: 1, surfaceId: 's1', root: 't', components: { t: { id: 't', type: 'text', props: { value: 'hi' } } } };
@@ -20,8 +19,6 @@ function makeSurfaces() {
 }
 
 describe('RenderA2uiTool', () => {
-	afterEach(() => setA2uiSurfaceRegistrar(undefined));
-
 	it('emits generativeUI for a valid doc', async () => {
 		const stream = { generativeUI: vi.fn() } as any;
 		const surfaces = makeSurfaces();
@@ -59,17 +56,6 @@ describe('RenderA2uiTool', () => {
 			await tool.invoke({ input: { doc: bad } } as any, {} as any);
 			expect(surfaces.register).not.toHaveBeenCalled();
 			expect(surfaces.stashPendingEmit).not.toHaveBeenCalled();
-		});
-
-		it('resolves the shared SurfaceRegistrar when DI-instantiated with no ctor arg', async () => {
-			// Mirrors the internal-ToolRegistry path: the tool is constructed without
-			// a registrar and resolves the one published by activate().
-			const surfaces = makeSurfaces();
-			setA2uiSurfaceRegistrar(surfaces);
-			const tool = new RenderA2uiTool();
-			await tool.invoke({ input: { doc: good } } as any, {} as any);
-			expect(surfaces.register).toHaveBeenCalledWith('s1');
-			expect(surfaces.stashPendingEmit).toHaveBeenCalledOnce();
 		});
 	});
 });

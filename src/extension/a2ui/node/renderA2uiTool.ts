@@ -5,10 +5,7 @@
 
 import type * as vscode from 'vscode';
 import { LanguageModelTextPart, LanguageModelToolResult } from '../../../vscodeTypes';
-import { ToolName } from '../../tools/common/toolNames';
-import { ToolRegistry } from '../../tools/common/toolsRegistry';
 import { validateDocument, type A2uiDocument } from '@copilot/a2ui-runtime';
-import { getA2uiSurfaceRegistrar } from './a2uiEmitBridge';
 
 /**
  * Narrow interface for surface registration. Task 3.6's SurfaceManager will implement this.
@@ -53,18 +50,7 @@ interface IRenderA2uiInput {
  *     participant handler that owns the stream (see wiring-report Part B / Phase 5).
  */
 export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput> {
-
-	public static readonly toolName = ToolName.RenderA2ui;
-
-	/**
-	 * `surfaces` is optional because this tool is now registered through the
-	 * internal {@link ToolRegistry}, whose ctors are DI-instantiated with no
-	 * extra args. In that path `invoke()` resolves the shared SurfaceManager via
-	 * {@link getA2uiSurfaceRegistrar} (published by activate()). Tests and the
-	 * stream-bearing participant path still construct it directly with a concrete
-	 * registrar.
-	 */
-	constructor(private readonly surfaces?: SurfaceRegistrar) { }
+	constructor(private readonly surfaces: SurfaceRegistrar) { }
 
 	/**
 	 * Stream-bearing path: validates, registers the surface, and emits the inset.
@@ -74,22 +60,9 @@ export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput
 	async invokeWith(input: IRenderA2uiInput, stream: GenerativeUIEmitter): Promise<{ ok: boolean; message: string }> {
 		const v = validateDocument(input.doc);
 		if (!v.ok) { return { ok: false, message: `A2UI invalid: ${v.errors.join('; ')}` }; }
-		const { runtimeUri } = this._resolveSurfaces().register(input.doc.surfaceId);
+		const { runtimeUri } = this.surfaces.register(input.doc.surfaceId);
 		stream.generativeUI(input.doc.surfaceId, runtimeUri, input.doc, input.doc.version);
 		return { ok: true, message: `Rendered surface ${input.doc.surfaceId}` };
-	}
-
-	/**
-	 * Resolve the {@link SurfaceRegistrar}: prefer a constructor-injected one
-	 * (participant path / tests), otherwise fall back to the shared instance
-	 * published by activate(). Throws if A2UI was never wired.
-	 */
-	private _resolveSurfaces(): SurfaceRegistrar {
-		const surfaces = this.surfaces ?? getA2uiSurfaceRegistrar();
-		if (!surfaces) {
-			throw new Error('A2UI SurfaceManager is not wired (setA2uiSurfaceRegistrar was never called).');
-		}
-		return surfaces;
 	}
 
 	/**
@@ -106,9 +79,8 @@ export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput
 		// Reserve the surface + runtime URI, then STASH a pending-emit record.
 		// The in-bubble emit (stream.generativeUI) cannot happen here (no stream),
 		// so the stream-owning tool-calling handler drains and replays it later.
-		const surfaces = this._resolveSurfaces();
-		const { runtimeUri } = surfaces.register(input.doc.surfaceId);
-		surfaces.stashPendingEmit({
+		const { runtimeUri } = this.surfaces.register(input.doc.surfaceId);
+		this.surfaces.stashPendingEmit({
 			surfaceId: input.doc.surfaceId,
 			runtimeUri,
 			doc: input.doc,
@@ -117,5 +89,3 @@ export class RenderA2uiTool implements vscode.LanguageModelTool<IRenderA2uiInput
 		return new LanguageModelToolResult([new LanguageModelTextPart(`Rendered surface ${input.doc.surfaceId}`)]);
 	}
 }
-
-ToolRegistry.registerTool(RenderA2uiTool);

@@ -6,10 +6,11 @@
 import * as vscode from 'vscode';
 import { ExtensionContext } from 'vscode';
 import { resolve } from '../../../util/vs/base/common/path';
-import { setA2uiEmitDrain, setA2uiSurfaceRegistrar } from '../../a2ui/node/a2uiEmitBridge';
+import { setA2uiEmitDrain } from '../../a2ui/node/a2uiEmitBridge';
 import { AgUiBridge } from '../../a2ui/node/agUiBridge';
 import { createInsetTransport } from '../../a2ui/node/insetTransport';
 import { McpDataPipe } from '../../a2ui/node/mcpDataPipe';
+import { RenderA2uiTool } from '../../a2ui/node/renderA2uiTool';
 import { SurfaceManager } from '../../a2ui/node/surfaceManager';
 import { baseActivate } from '../vscode/extension';
 import { vscodeNodeContributions } from './contributions';
@@ -99,15 +100,7 @@ function registerA2ui(context: ExtensionContext): void {
 	const mcpDataPipe = new McpDataPipe(agUiBridge);
 	void mcpDataPipe; // retained: the live subscription source is a runtime concern (see above).
 
-	// The `render_a2ui` tool is registered through the internal `ToolRegistry`
-	// (see a2ui/node/renderA2uiTool.ts), imported by the tool barrel
-	// (tools/node/allTools.ts) and DI-instantiated + `vscode.lm.registerTool`'d by
-	// `ToolsContribution`. That registry is the path the agent builds its toolset
-	// from, so the tool is now visible to the model. Because DI-instantiated ctors
-	// cannot receive this activate()-constructed SurfaceManager, publish it through
-	// the shared module-level holder for the tool to resolve in `invoke()`.
-	setA2uiSurfaceRegistrar(surfaceManager);
-	context.subscriptions.push({ dispose: () => setA2uiSurfaceRegistrar(undefined) });
+	context.subscriptions.push(vscode.lm.registerTool('render_a2ui', new RenderA2uiTool(surfaceManager)));
 
 	// EMIT BRIDGE ("Option A"): publish the SAME SurfaceManager instance so the
 	// stream-owning tool-calling handler (buildToolResultElement in
