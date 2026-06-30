@@ -239,4 +239,8 @@ export class ChatResponseStreamImpl implements FinalizableChatResponseStream {
 			this._usage(usage);
 		}
 	}
+
+	generativeUI(_surfaceId: string, _runtimeUri: Uri, _initialDoc?: object, _version?: number): void {
+		// No-op stub; fulfilled at runtime by the core fork.
+	}
 }

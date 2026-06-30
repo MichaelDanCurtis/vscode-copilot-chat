@@ -133,6 +133,7 @@ export class CodeBlockTrackingChatResponseStream implements ChatResponseStream {
 	beginToolInvocation = this.forward(this._wrapped.beginToolInvocation.bind(this._wrapped));
 	updateToolInvocation = this.forward(this._wrapped.updateToolInvocation.bind(this._wrapped));
 	usage = this.forward(this._wrapped.usage.bind(this._wrapped));
+	generativeUI = this.forward(this._wrapped.generativeUI.bind(this._wrapped));
 
 	questionCarousel(questions: ChatQuestion[], allowSkip?: boolean): Thenable<Record<string, unknown> | undefined> {
 		this._codeBlockProcessor.flush();
