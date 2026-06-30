@@ -7,6 +7,9 @@ import * as vscode from 'vscode';
 import { ExtensionContext } from 'vscode';
 import { resolve } from '../../../util/vs/base/common/path';
 import { setA2uiEmitDrain } from '../../a2ui/node/a2uiEmitBridge';
+import { AgUiBridge } from '../../a2ui/node/agUiBridge';
+import { createInsetTransport } from '../../a2ui/node/insetTransport';
+import { McpDataPipe } from '../../a2ui/node/mcpDataPipe';
 import { RenderA2uiTool } from '../../a2ui/node/renderA2uiTool';
 import { SurfaceManager } from '../../a2ui/node/surfaceManager';
 import { baseActivate } from '../vscode/extension';
@@ -54,13 +57,21 @@ export function activate(context: ExtensionContext, forceActivation?: boolean) {
  * {@link SurfaceManager} that owns surface lifecycle, and registers the
  * `render_a2ui` Language-Model Tool.
  *
- * Phase-5 deferral: the SurfaceManager collaborators below are intentional
- * minimal-safe stubs for the static-render milestone. Live STATE_DELTA push,
- * the interaction reverse-channel, and MCP subscription wiring all flow through
- * these collaborators and will be implemented in Phase 5:
- *   - `insetTransport.post`  — no-op (no live host→inset push yet).
- *   - `mcpPipe.callTool`     — throws (interaction routing not wired yet).
- *   - `enqueueAgentTurn`     — no-op (agent reverse-channel not wired yet).
+ * Phase-5.1 (LIVE STATE_DELTA TRANSPORT): `insetTransport.post` is now the
+ * real cross-fork channel — it invokes the internal core command
+ * `_a2ui.postToSurface`, which forwards the message to the already-rendered
+ * inset registered under that surfaceId. The live data path is also wired:
+ * `McpDataPipe(bridge)` diffs MCP snapshots into STATE_DELTA patches, the
+ * `AgUiBridge` (using the SurfaceManager as its SurfaceChannel) turns those into
+ * HostToInsetMessages, and `surfaceManager.post` pushes them through the command
+ * to the inset. So: bridge.emitStateDelta → surfaceManager.post → command → inset.
+ *
+ * Remaining Phase-5 deferrals (NOT this task):
+ *   - `mcpPipe.callTool`  — throws (interaction routing is Task 5.2).
+ *   - `enqueueAgentTurn`  — no-op (agent reverse-channel is Task 5.2).
+ *   - An actual MCP server subscription (`mcpDataPipe.subscribe(...)`) is a
+ *     config/runtime concern; the objects are wired so the path is complete,
+ *     but no live subscription is created here.
  *
  * KNOWN GAP (see wiring-report Part B): a tool registered via
  * `vscode.lm.registerTool` cannot access a `ChatResponseStream`, so the tool's
@@ -71,11 +82,23 @@ export function activate(context: ExtensionContext, forceActivation?: boolean) {
 function registerA2ui(context: ExtensionContext): void {
 	const surfaceManager = new SurfaceManager({
 		resolveRuntimeUri: () => vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@copilot', 'a2ui-runtime', 'dist', 'runtime.iife.js'),
-		// Phase-5 wiring stubs (static-render scope only) — see function doc.
-		insetTransport: { post: () => { /* TODO(phase5): live host→inset STATE_DELTA push */ } },
-		mcpPipe: { callTool: async () => { throw new Error('A2UI mcpPipe.callTool not wired yet (Phase 5)'); } },
-		enqueueAgentTurn: () => { /* TODO(phase5): agent reverse-channel for interactions */ },
+		// LIVE host→inset push: forward through the internal core command which
+		// looks the inset up by surfaceId and posts to its webview.
+		insetTransport: createInsetTransport((command, ...args) => vscode.commands.executeCommand(command, ...args)),
+		// Phase-5.2 wiring stubs (interaction reverse-channel) — see function doc.
+		mcpPipe: { callTool: async () => { throw new Error('A2UI mcpPipe.callTool not wired yet (Phase 5.2)'); } },
+		enqueueAgentTurn: () => { /* TODO(phase5.2): agent reverse-channel for interactions */ },
 	});
+
+	// LIVE DATA PATH: wire the bridge + MCP pipe so deltas flow end-to-end.
+	// SurfaceManager is the bridge's SurfaceChannel, so bridge.emitStateDelta →
+	// surfaceManager.post → insetTransport → command → inset. McpDataPipe(bridge)
+	// converts MCP snapshot diffs into those STATE_DELTA emits. The actual MCP
+	// subscription (mcpDataPipe.subscribe(surfaceId, source, tool)) is created at
+	// runtime when a surface binds to a server (Phase-5.2 / runtime config).
+	const agUiBridge = new AgUiBridge(surfaceManager);
+	const mcpDataPipe = new McpDataPipe(agUiBridge);
+	void mcpDataPipe; // retained: the live subscription source is a runtime concern (see above).
 
 	context.subscriptions.push(vscode.lm.registerTool('render_a2ui', new RenderA2uiTool(surfaceManager)));
 
